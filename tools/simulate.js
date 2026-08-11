@@ -81,7 +81,7 @@ if (args.search) {
   }
 } else if (args.counts) {
   console.log(`${args.n} games at each table size\n`);
-  for (const players of [2, 3, 4, 5, 6]) {
+  for (const players of [3, 4, 5, 6]) {
     const { summary } = await tournament(presetBase(), { ...args, players });
     console.log(`${String(imbalance(summary, players).penalty.toFixed(0)).padStart(4)}  ${fmtRow(`${players} players`, summary)}`);
   }

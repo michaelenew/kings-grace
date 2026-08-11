@@ -64,6 +64,8 @@ export function createGame(opts = {}) {
     titleGrants: { 2: false, 3: false }, // "first time you reach" flags (§2)
     ransomUsed: false,
     escrow: 0,
+    /** Turncoat tokens: earned in the shadow, spendable or tradeable (§2). */
+    turncoat: 0,
   }));
 
   return {
@@ -86,7 +88,8 @@ export function createGame(opts = {}) {
     knowledge: {}, // pid -> {orders:{pid:commitment}, topCard: card|null}
     pacts: {}, // pid -> pact honoured this round (diplomacy layer)
     goodwill: {}, // "from>to" -> number, gold gifted so far
-    changeRights: {}, // pid -> count of unspent turncoat rights
+    deals: [], // deals struck this game, for the chronicle
+    beats: [], // structured record of this round's resolution, for animation
     log: [],
     winner: null, // {playerIds:[], how:'usurp'|'inherit'}
   };

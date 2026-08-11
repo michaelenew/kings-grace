@@ -10,6 +10,7 @@
 // each other and see which ones actually win.
 
 import { BAND, CROWN, FEALTY_MAX, ORDER, TITLES, bandOf, clampFealty } from './constants.js';
+import { emptyGoods } from './deals.js';
 
 const TRAITS = {
   loyalist: { aggression: 0.55, greed: 0.9, treachery: 0.3, nerve: 0.7, crownLove: 1.6 },
@@ -372,73 +373,101 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     if (incoming.length && mine?.order === ORDER.ATTACK && mine.target !== CROWN) {
       return { action: 'change' };
     }
-    // Otherwise sell the favour to whoever has been generous.
-    const benefactors = request.others
-      .map((id) => ({ id, gold: view.goodwill?.[`${id}>${me.id}`] || 0 }))
-      .sort((a, b) => b.gold - a.gold);
-    if (benefactors[0] && benefactors[0].gold >= 3) return { action: 'give', to: benefactors[0].id };
+    // Otherwise hold the token. It is worth gold to somebody at the deal table.
     return { action: 'none' };
   }
 
   /**
    * One proposal per round, before orders are sealed. The interesting one is
-   * buying the support a coup needs: support aimed at an attacker counts
-   * toward *their* strength, so a bought sword crowns the buyer, not the
-   * seller. That is the only way a throne gets taken by anyone who did not
-   * simply out-hoard the table.
+   * buying the support a coup needs: support aimed at an attacker counts toward
+   * *their* strength, so a bought sword crowns the buyer, not the seller. That
+   * is the only route to the throne that is not simply out-hoarding the table.
+   *
+   * What is offered is goods. What is said about it is words.
    */
-  function chooseParley(request, view) {
+  function chooseDeal(request, view) {
     const me = view.players.find((p) => p.id === view.me);
     const others = view.players.filter((p) => p.id !== me.id);
     const t = view.tuning;
-    const ceiling = t.commitCap === null || t.commitCap === undefined ? me.gold : Math.min(me.gold, t.commitCap);
+    const cap = t.commitCap ?? me.gold;
+    const ceiling = Math.min(me.gold, cap);
     const marshal = has(me, 'marshal') ? t.marshalBonus : 0;
     const defense = view.crownStrength;
 
-    // Can I take the throne if somebody lends me their purse?
+    const offer = (to, gold, intent) => ({
+      transfers: [{ from: me.id, to, goods: { ...emptyGoods(), gold } }],
+      intent,
+    });
+
+    // Can I take the throne if somebody lends me their sword?
     const reachAlone = ceiling + marshal;
     if (reachAlone > 2 && reachAlone <= defense + 2) {
-      const candidates = others
-        .filter((o) => o.gold >= 2)
-        .sort((a, b) => b.gold - a.gold);
-      for (const ally of candidates) {
+      const allies = others.filter((o) => o.gold >= 2).sort((a, b) => b.gold - a.gold);
+      for (const ally of allies) {
         const bribe = clamp(Math.ceil(ally.gold * 0.4), 1, Math.max(1, me.gold - 2));
-        const theirSpend = ally.gold; // they will be paid, then asked to spend their own
+        const theirSpend = Math.min(ally.gold, cap);
         if (reachAlone - bribe + theirSpend > defense + 1) {
-          return {
-            to: ally.id,
-            kind: 'supportAttack',
-            gold: bribe,
-            expected: theirSpend,
-          };
+          return offer(ally.id, bribe, { kind: 'supportAttack', of: ally.id, expected: theirSpend });
         }
       }
+    }
+
+    // Buy a turncoat token off an outlaw: a change of orders after the peek is
+    // worth real gold, and the shadow rarely has a better use for it.
+    const tokenHolder = others.find((o) => o.turncoat > 0);
+    if (tokenHolder && me.gold >= 4 && traits.treachery > 0.7) {
+      return {
+        transfers: [
+          { from: me.id, to: tokenHolder.id, goods: { ...emptyGoods(), gold: 3 } },
+          { from: tokenHolder.id, to: me.id, goods: { ...emptyGoods(), turncoat: 1 } },
+        ],
+      };
     }
 
     // Otherwise pay somebody else to bloody the runaway heir, since striking a
     // favorite personally costs two standing.
     const heir = others.slice().sort((a, b) => b.fealty - a.fealty)[0];
     if (heir && heir.fealty >= 2 && me.fealty < heir.fealty && me.gold >= 4) {
-      const hireling = others
-        .filter((o) => o.id !== heir.id && o.gold >= 2)
-        .sort((a, b) => b.gold - a.gold)[0];
+      const hireling = others.filter((o) => o.id !== heir.id && o.gold >= 2).sort((a, b) => b.gold - a.gold)[0];
       if (hireling) {
-        return { to: hireling.id, kind: 'attack', subject: heir.id, gold: clamp(Math.floor(me.gold * 0.3), 1, 5) };
+        const gold = clamp(Math.floor(me.gold * 0.3), 1, 5);
+        return offer(hireling.id, gold, { kind: 'attack', of: hireling.id, subject: heir.id });
       }
     }
     return null;
   }
 
-  function considerOffer(request, view) {
-    // Bots evaluate offers through rankOrders in diplomacy.js; this branch only
-    // fires when a bot is asked directly, which the engine does not do today.
-    return { accept: false };
+  /**
+   * Judge a deal put to me. Goods are weighed against what they cost; a stated
+   * intention adds nothing on its own, because anybody can say anything.
+   */
+  function considerDeal(request, view) {
+    const me = view.players.find((p) => p.id === view.me);
+    const remaining = view.deckCount;
+    const worth = (goods) => {
+      if (!goods) return 0;
+      let v = goods.gold || 0;
+      v += (goods.lands || 0) * (2 + remaining * 0.8);
+      v += ((goods.titles || []).length) * 6;
+      v += (goods.turncoat || 0) * 3 * Math.max(0.6, traits.treachery);
+      return v;
+    };
+    let net = 0;
+    for (const transfer of request.deal.transfers || []) {
+      if (transfer.to === me.id) net += worth(transfer.goods);
+      if (transfer.from === me.id) net -= worth(transfer.goods);
+    }
+    // Giving up a title is close to unthinkable unless the price is silly.
+    const losingTitle = (request.deal.transfers || [])
+      .some((x) => x.from === me.id && (x.goods?.titles || []).length);
+    const bar = losingTitle ? 8 : 0.5;
+    return { accept: net > bar, line: net > bar ? 'Agreed.' : 'Not for that.' };
   }
 
   function decide(request, view) {
     switch (request.type) {
-      case 'parley': return chooseParley(request, view);
-      case 'offer': return considerOffer(request, view);
+      case 'proposeDeal': return chooseDeal(request, view);
+      case 'deal': return considerDeal(request, view);
       case 'order': return chooseOrder(request, view);
       case 'levy': return chooseLevy(request, view);
       case 'title': return chooseTitle(request, view);
@@ -446,13 +475,6 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       case 'peekChoice': return choosePeekKind(request, view);
       case 'peekTarget': return choosePeekTarget(request, view);
       case 'turncoat': return chooseTurncoat(request, view);
-      case 'turncoatGranted': {
-        const me = view.players.find((p) => p.id === view.me);
-        const mine = view.commitments[me.id];
-        const threatened = Object.entries(view.commitments)
-          .some(([id, c]) => id !== me.id && c.order === ORDER.ATTACK && c.target === me.id);
-        return threatened && mine?.order === ORDER.ATTACK ? { action: 'change' } : { action: 'none' };
-      }
       default: return null;
     }
   }

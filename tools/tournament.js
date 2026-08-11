@@ -63,10 +63,17 @@ function imbalance(s, players = 4) {
 
   // Both roads to the throne should be live.
   add(Math.abs(s.usurp - 50) * 0.9, 'road-mix');
-  // No strategy should be dead or dominant. Spread is measured relative to the
-  // 1/players baseline: 27 points between two doctrines at a two-player table
-  // is the same imbalance as 13 points between four.
-  add(s.doctrineSpread * players * 0.4, 'doctrine-spread');
+  // No strategy should be dead or dominant — but a strict loyalist is allowed
+  // to sit below the mean. Everyone can betray the crown at any moment; an
+  // outlaw has no fast road back to being a favorite. Backstabbing is equal
+  // opportunity and loyalism is not, so what is scored is the *floor* (a lane
+  // that cannot win) and the *ceiling* (one that runs away with it), not the
+  // raw spread.
+  const baselineRate = 100 / Math.max(1, players);
+  for (const d of s.doctrineRates) {
+    add(Math.max(0, baselineRate * 0.55 - d.rate) * players * 0.9, `${d.name}-dead`);
+    add(Math.max(0, d.rate - baselineRate * 1.45) * players * 0.9, `${d.name}-dominant`);
+  }
   // The game should use most of its deck without dragging past it.
   add(Math.max(0, 8.5 - s.meanRound) * 9, 'too-short');
   add(Math.max(0, s.meanRound - 11.5) * 6, 'too-long');

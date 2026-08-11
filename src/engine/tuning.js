@@ -5,7 +5,7 @@
 // Anything here can be overridden per game (the setup screen exposes the ones
 // worth touching), which is how you playtest a variant without editing code.
 
-export const PLAYER_MIN = 2;
+export const PLAYER_MIN = 3;
 export const PLAYER_MAX = 6;
 
 export const RULES = {
@@ -15,25 +15,21 @@ export const RULES = {
   startFealty: 0,
   /** Unclaimed land is dealt per player, so Develop stays live at any count. */
   neutralPerPlayer: 2,
+  /** Most unspent turncoat tokens a player may hold at once. */
+  turncoatMax: 2,
   deck: { tax: 5, levy: 4, favor: 2, purge: 1 },
 
   // ---- The Crown ------------------------------------------------------
   // Crown strength = crownBase + crownPerPlayer x players + cards remaining.
-  // With these values that is 8 + cards at two players, falling to 4 + cards at
-  // six — the crown stands taller at a small table and shorter at a large one.
+  // A bigger table can raise a bigger coalition, so the throne stands taller.
   //
-  // That is the opposite of the obvious intuition and it is what the games
-  // show: a coup is not stopped by the crown alone but by whoever else throws
-  // gold behind it, and a big table has more nobles available to do that. At a
-  // flat offset, two-player games ended in a coup 81% of the time and
-  // six-player games 45%.
-  //
-  // Raising the offset generally is tempting and wrong. A crown nobody can
-  // reach means the first player to +3 cannot be deposed, and the Herald then
-  // wins every tie forever: at an offset of 8 the Herald's holder won 44% of
-  // four-player games against 35% at 6. The coup is the check on the heir.
-  crownBase: 10,
-  crownPerPlayer: -1,
+  // Do not raise the offset far past this. A crown nobody can reach means the
+  // first player to +3 cannot be deposed — nothing in the game lowers a rival's
+  // fealty — and the Herald then wins every tie forever. At an offset of 8 the
+  // Herald's holder won 1.76x their share of games against 1.41x at 6. The coup
+  // is the only check on the heir.
+  crownBase: 2,
+  crownPerPlayer: 1,
   crownPerCard: 1,
 
   // ---- Combat ---------------------------------------------------------
@@ -49,7 +45,7 @@ export const RULES = {
    * conspiracy: no purse alone can outreach the crown, so the throne has to be
    * bought with somebody else's sword.
    */
-  commitCap: 6,
+  commitCap: 7,
 
   // ---- Income ---------------------------------------------------------
   landIncome: 1,

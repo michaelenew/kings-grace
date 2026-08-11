@@ -21,13 +21,13 @@ test('setup deals what the rules say', () => {
   assert.equal(g.state.deck.length, deckSize(RULES));
 });
 
-test('the crown stands taller at a small table than a large one', () => {
+test('the crown stands taller the bigger the table', () => {
   const strengthAt = (players) => {
     const g = makeGame({ players });
     return crownStrength(g.state);
   };
-  assert.ok(strengthAt(2) > strengthAt(4), 'two-handed play needs a taller crown');
-  assert.ok(strengthAt(4) > strengthAt(6), 'six-handed play needs a shorter one');
+  assert.ok(strengthAt(3) < strengthAt(4), 'a bigger table can raise a bigger coalition');
+  assert.ok(strengthAt(4) < strengthAt(6), 'and a bigger one still at six');
   const g = makeGame();
   assert.equal(
     crownStrength(g.state),
@@ -36,8 +36,8 @@ test('the crown stands taller at a small table than a large one', () => {
   );
 });
 
-test('a game can be dealt for two through six players', () => {
-  for (let players = 2; players <= 6; players++) {
+test('a game can be dealt for three through six players', () => {
+  for (let players = 3; players <= 6; players++) {
     const g = makeGame({ players });
     assert.equal(g.state.players.length, players);
     assert.equal(g.state.neutralPool, neutralPoolFor(RULES, players));
@@ -560,7 +560,7 @@ test('gold can be given away, but escrowed gold cannot', () => {
   assert.equal(g.gift('p0', 'p1', 1), false, 'nothing left outside the war chest');
 });
 
-test('an outlaw peeks and may turn a coat', async () => {
+test('an outlaw peeks, earns a token and may spend it', async () => {
   const g = makeGame({
     controllers: {
       p0: {
@@ -599,26 +599,32 @@ test('an outlaw at −3 sees both a rival order and the top card', async () => {
   assert.ok(g.state.knowledge.p0.orders.p2);
 });
 
-test('the change right can be handed to another player', async () => {
+test('a turncoat token can be traded away and spent by whoever holds it', async () => {
   const g = makeGame({
     controllers: {
-      p0: { turncoat: { action: 'give', to: 'p1' } },
       p1: {
-        turncoatGranted: { action: 'change' },
+        turncoat: { action: 'change' },
         order: (req) => (req.reason === 'turncoat' ? { order: ORDER.DEVELOP } : { order: ORDER.PETITION }),
       },
     },
   });
-  set(g.state, 'p0', { fealty: -2, gold: 6 });
+  set(g.state, 'p0', { fealty: -2, gold: 6, turncoat: 1 });
   fillOrders(g, {
     p0: { order: ORDER.DEVELOP },
     p1: { order: ORDER.PETITION },
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
+  // The outlaw sells the token before the change window opens.
+  const { settleDeal, emptyGoods } = await import('../src/engine/deals.js');
+  settleDeal(g, { transfers: [{ from: 'p0', to: 'p1', goods: { ...emptyGoods(), turncoat: 1 } }] });
+  assert.equal(get(g.state, 'p0').turncoat, 0);
+  assert.equal(get(g.state, 'p1').turncoat, 1);
+
   await g.peekPhase();
-  assert.equal(g.state.commitments.p1.order, ORDER.DEVELOP);
-  assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP, 'the giver keeps their own order');
+  assert.equal(g.state.commitments.p1.order, ORDER.DEVELOP, 'the buyer spent it');
+  assert.equal(get(g.state, 'p1').turncoat, 0);
+  assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP, 'the seller keeps their own order');
 });
 
 // ------------------------------------------------------ ransom module (§9)

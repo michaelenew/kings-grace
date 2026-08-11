@@ -92,7 +92,7 @@ export class Game {
       await this.crownFlip();
       if (s.winner) break;
       await this.pause('crown');
-      await this.parleyPhase();
+      await this.dealPhase();
       await this.commitPhase();
       await this.peekPhase();
       await this.resolvePhase();
@@ -209,7 +209,6 @@ export class Game {
     this.setPhase('commit');
     s.commitments = {};
     s.knowledge = {};
-    s.changeRights = {};
     s.revealed = false;
     for (const p of s.players) s.knowledge[p.id] = { orders: {}, topCard: null };
 
@@ -225,51 +224,44 @@ export class Game {
   }
 
   /**
-   * Table talk, before anyone seals anything (§3). Every seat gets one chance
-   * to put a proposal to another house. Bots use it to buy the support a coup
-   * needs — the rules make a usurpation a conspiracy, so the bots have to be
-   * able to conspire or the throne can never be taken by anyone but a hoarder.
+   * Table talk, before anyone seals anything (§3). A deal moves goods — gold,
+   * land, titles, turncoat tokens — and settles only when everyone named in it
+   * accepts. Whatever anybody says they will *do* with the proceeds is words,
+   * and words bind nobody.
    */
-  async parleyPhase() {
+  async dealPhase() {
     const s = this.state;
     s.pacts = {};
-    s.goodwillRound = {};
-    this.setPhase('parley');
+    this.setPhase('deals');
+    const { proposeDeal } = await import('./deals.js');
     for (const p of s.rng.shuffle(s.players.slice())) {
-      const controller = this.controllers[p.id];
-      if (!controller || controller.kind !== 'ai') continue; // humans use the court panel
-      const offer = await this.ask(p.id, { type: 'parley', others: s.players.filter((x) => x.id !== p.id).map((x) => x.id) });
-      if (!offer || !offer.to || !this.player(offer.to)) continue;
-      await this.putOffer({ ...offer, from: p.id });
+      const deal = await this.ask(p.id, {
+        type: 'proposeDeal',
+        others: s.players.filter((x) => x.id !== p.id).map((x) => x.id),
+      });
+      if (!deal || !deal.transfers?.length) continue;
+      await this.putDeal({ ...deal, proposer: p.id });
     }
   }
 
-  /** Route one offer to its target, whoever is sitting there. */
-  async putOffer(offer) {
-    const s = this.state;
-    const from = this.player(offer.from);
-    const to = this.player(offer.to);
-    const gold = Math.max(0, Math.min(Math.floor(offer.gold || 0), from.gold));
-    const controller = this.controllers[offer.to];
-
-    if (controller?.kind === 'ai') {
-      const { proposeParley } = await import('./diplomacy.js');
-      const result = proposeParley(this, { ...offer, gold });
-      if (result.accepted) this.emit('parley', `${from.name} and ${to.name} come to an understanding.`, { secret: true, pid: offer.from });
-      return result;
+  /** Route a deal to the table and record any stated intent as a (loose) pact. */
+  async putDeal(deal) {
+    const { proposeDeal, dealBalance } = await import('./deals.js');
+    const result = await proposeDeal(this, deal);
+    if (result.accepted && deal.intent) {
+      const s = this.state;
+      const to = deal.intent.of;
+      if (to && this.player(to)) {
+        s.pacts[to] = {
+          kind: deal.intent.kind,
+          subject: deal.intent.subject || null,
+          with: deal.proposer,
+          paid: Math.max(0, dealBalance(s, deal, to)),
+          expected: deal.intent.expected ?? 2,
+        };
+      }
     }
-
-    const answer = await this.ask(offer.to, { type: 'offer', offer: { ...offer, gold } });
-    if (answer?.accept) {
-      if (gold > 0) this.gift(offer.from, offer.to, gold);
-      s.pacts[offer.to] = {
-        kind: offer.kind, subject: offer.subject || null, with: offer.from, paid: gold, expected: offer.expected ?? 2,
-      };
-      this.emit('parley', `${to.name} accepts ${from.name}'s proposal.`);
-      return { accepted: true };
-    }
-    this.emit('parley', `${to.name} turns ${from.name} down.`, { secret: true, pid: offer.to });
-    return { accepted: false };
+    return result;
   }
 
   /** Validate + escrow an order. Committed gold is spent immediately (§3). */
@@ -340,7 +332,10 @@ export class Game {
           });
           await this.doPeek(p, pick === 'card' ? 'card' : 'order');
         }
-        s.changeRights[p.id] = (s.changeRights[p.id] || 0) + 1;
+        if (p.turncoat < s.tuning.turncoatMax) {
+          p.turncoat += 1;
+          this.emit('turncoat', `${p.name} pockets a turncoat token.`, { secret: true, pid: p.id });
+        }
       }
 
       if (hasTitle(p, 'spymaster')) {
@@ -348,54 +343,25 @@ export class Game {
       }
     }
 
-    // Turncoat rights are exercised after every outlaw has looked.
+    // Tokens are spent after every outlaw has looked. A token is a thing you
+    // hold, so it can be traded away in a deal before it is ever spent.
     for (const p of seatOrder(s)) {
-      while ((s.changeRights[p.id] || 0) > 0) {
-        s.changeRights[p.id] -= 1;
+      while (p.turncoat > 0) {
         const answer = await this.ask(p.id, {
           type: 'turncoat',
-          others: s.players.filter((x) => x.id !== p.id).map((x) => x.id),
-          text: 'Turncoat: change your own order, hand the right to another player, or decline.',
+          tokens: p.turncoat,
+          text: 'Spend a turncoat token to change your sealed order?',
         });
-        const action = answer?.action || 'none';
-        if (action === 'change') {
-          const before = s.commitments[p.id];
-          const next = await this.ask(p.id, {
-            type: 'order',
-            legal: legalOrders(s, { ...p, gold: p.gold + p.escrow }),
-            petitionCost: petitionCostFor(s, p),
-            reason: 'turncoat',
-          });
-          this.recommit(p.id, next);
-          this.emit('turncoat', `${p.name} quietly changes their order.`, { secret: true, pid: p.id, before });
-        } else if (action === 'give' && answer.to && this.player(answer.to)) {
-          s.changeRights[answer.to] = (s.changeRights[answer.to] || 0) + 1;
-          this.emit('turncoat', `${p.name} hands a change of orders to ${this.nameOf(answer.to)}.`);
-          // The recipient exercises it right away.
-          const to = this.player(answer.to);
-          while ((s.changeRights[to.id] || 0) > 0) {
-            s.changeRights[to.id] -= 1;
-            const use = await this.ask(to.id, {
-              type: 'turncoatGranted',
-              from: p.id,
-              text: `${p.name} gives you one change of orders. Use it?`,
-            });
-            if (use?.action === 'change') {
-              const next = await this.ask(to.id, {
-                type: 'order',
-                legal: legalOrders(s, { ...to, gold: to.gold + to.escrow }),
-                petitionCost: petitionCostFor(s, to),
-                reason: 'turncoat',
-              });
-              this.recommit(to.id, next);
-              this.emit('turncoat', `${to.name} changes their order.`, { secret: true, pid: to.id });
-            } else {
-              this.emit('turncoat', `${to.name} declines to change anything.`);
-            }
-          }
-        } else {
-          this.emit('turncoat', `${p.name} lets the orders stand.`);
-        }
+        if (answer?.action !== 'change') break;
+        p.turncoat -= 1;
+        const next = await this.ask(p.id, {
+          type: 'order',
+          legal: legalOrders(s, { ...p, gold: p.gold + p.escrow }),
+          petitionCost: petitionCostFor(s, p),
+          reason: 'turncoat',
+        });
+        this.recommit(p.id, next);
+        this.emit('turncoat', `${p.name} spends a turncoat token and quietly changes their order.`, { secret: true, pid: p.id });
       }
     }
   }
@@ -426,6 +392,9 @@ export class Game {
     const s = this.state;
     this.setPhase('resolve');
     s.revealed = true;
+    // A structured record of what happened, in the order it happened, so the
+    // client can show it rather than dumping twenty lines of text at once.
+    s.beats = [];
     for (const p of seatOrder(s)) {
       const c = s.commitments[p.id];
       this.emit('reveal', `${p.name}: ${describeOrder(c, (id) => this.nameOf(id), s.tuning.pardonCost)}.`);
@@ -441,12 +410,15 @@ export class Game {
     const bands = Object.fromEntries(s.players.map((p) => [p.id, bandOf(p.fealty)]));
     const fealtyNow = Object.fromEntries(s.players.map((p) => [p.id, p.fealty]));
 
+    // Order matters and is worth stating plainly: standing moves first, so a
+    // pardon lands before the swords do; then land is settled; then support is
+    // counted; then the attacks resolve against it.
+    this.step_develop();
     const support = this.tallySupport();
     await this.step_crownAssault(support);
     if (s.winner) return;
     // A failed coup (or a civil war) does not stop the swords between houses.
     await this.step_battles(support, bands, fealtyNow);
-    this.step_develop();
     this.step_attackFealty(bands);
     await this.grantTitles();
     this.notify();
@@ -460,9 +432,11 @@ export class Game {
       if (!c || c.order !== ORDER.PETITION) continue;
       if (bandsAtStart[p.id] === BAND.OUTLAW) {
         p.fealty = 0;
+        s.beats.push({ kind: 'appeal', actor: p.id, pardon: true });
         this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0.`);
       } else {
         p.fealty = clampFealty(p.fealty + 1);
+        s.beats.push({ kind: 'appeal', actor: p.id, fealty: p.fealty });
         this.emit('petition', `${p.name} petitions the Crown: fealty ${fmt(p.fealty)}.`);
       }
     }
@@ -508,10 +482,12 @@ export class Game {
       if (!c || c.order !== ORDER.SUPPORT) continue;
       if (c.target === CROWN) {
         toCrown += c.gold;
+        s.beats.push({ kind: 'support', actor: p.id, target: CROWN, gold: c.gold });
         this.emit('support', `${p.name} sends ${c.gold} gold to the Crown's defense.`);
         continue;
       }
       const tc = s.commitments[c.target];
+      s.beats.push({ kind: 'support', actor: p.id, target: c.target, gold: c.gold });
       if (tc && tc.order === ORDER.ATTACK) {
         toAttack[c.target] = (toAttack[c.target] || 0) + c.gold;
         this.emit('support', `${p.name} reinforces ${this.nameOf(c.target)}'s attack with ${c.gold} gold.`);
@@ -573,6 +549,9 @@ export class Game {
     const who = marchers.length > 1
       ? `${marchers.slice(0, -1).join(', ')} and ${marchers[marchers.length - 1]}`
       : marchers[0];
+    for (const c of contributions) {
+      s.beats.push({ kind: 'attack', actor: c.pid, target: CROWN, strength: c.value, defense, won });
+    }
     this.emit('coup', `Usurpation! ${who} ${verb} on the throne: ${pool} against the Crown's ${defense}.`);
 
     if (!won) {
@@ -644,6 +623,7 @@ export class Game {
         const attacker = this.player(a.attacker);
         const heraldWinsTie = hasTitle(attacker, 'herald') && !hasTitle(defender, 'herald');
         const wins = a.strength > def || (a.strength === def && heraldWinsTie);
+        s.beats.push({ kind: 'attack', actor: a.attacker, target: targetId, strength: a.strength, defense: def, won: wins });
         if (!wins) {
           this.emit('combat', `${attacker.name} strikes at ${defender.name} with ${a.strength} and is thrown back.`);
           continue;
@@ -695,7 +675,7 @@ export class Game {
     }
   }
 
-  /** §4 Develop, resolved after spoils so a fresh land cannot be looted the same round. */
+  /** §4 Develop, resolved after standing and before the swords. */
   step_develop() {
     const s = this.state;
     const developers = seatOrder(s).filter((p) => s.commitments[p.id]?.order === ORDER.DEVELOP);
@@ -708,6 +688,7 @@ export class Game {
       }
       s.neutralPool -= 1;
       p.lands += 1;
+      s.beats.push({ kind: 'develop', actor: p.id, lands: p.lands });
       this.emit('develop', `${p.name} settles a new land (${p.lands} total).`);
     }
   }

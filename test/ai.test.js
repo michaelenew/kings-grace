@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../src/engine/game.js';
 import { createGame, crownStrength } from '../src/engine/state.js';
 import { createAI, saltFor } from '../src/engine/ai.js';
-import { proposeParley } from '../src/engine/diplomacy.js';
+import { proposeDeal, emptyGoods } from '../src/engine/deals.js';
 import { CROWN, ORDER, PERSONALITIES, TITLES } from '../src/engine/constants.js';
 import { RULES, neutralPoolFor } from '../src/engine/tuning.js';
 
@@ -115,26 +115,14 @@ test('a commitment cap is never exceeded, by bot or by engine', async () => {
 
 // The commitment cap is what makes buying a sword the only way onto the throne:
 // no single purse outreaches the crown, so a usurper needs an ally.
-test('bots buy the support a coup needs, and the gold really moves', async () => {
-  let pactsSeen = 0;
-  let goldMoved = 0;
+test('bots strike bargains, and the goods really move', async () => {
+  let dealsStruck = 0;
   for (let seed = 1; seed <= 60; seed++) {
     const game = botGame(seed, {});
-    game.subscribe(() => {});
-    const originalPut = game.putOffer.bind(game);
-    game.putOffer = async (offer) => {
-      const before = game.player(offer.to).gold;
-      const result = await originalPut(offer);
-      if (result?.accepted) {
-        pactsSeen += 1;
-        goldMoved += game.player(offer.to).gold - before;
-      }
-      return result;
-    };
     await game.run();
+    dealsStruck += game.state.deals.length;
   }
-  assert.ok(pactsSeen > 0, 'bots never struck a bargain across 60 games');
-  assert.ok(goldMoved > 0, 'bargains were struck but no gold changed hands');
+  assert.ok(dealsStruck > 0, 'bots never struck a bargain across 60 games');
 });
 
 test('bots only ever commit orders they can afford', async () => {
@@ -155,7 +143,7 @@ test('bots only ever commit orders they can afford', async () => {
   }
 });
 
-test('a bribe can buy a bot\'s sword, and the gold really moves', () => {
+test('a bot takes a deal that pays it and refuses one that does not', async () => {
   const state = createGame({
     seed: 11,
     seats: [{ kind: 'human' }, { kind: 'ai', personality: 'wolf' }, { kind: 'ai', personality: 'merchant' }, { kind: 'ai', personality: 'loyalist' }],
@@ -163,23 +151,58 @@ test('a bribe can buy a bot\'s sword, and the gold really moves', () => {
   const controllers = { p0: { kind: 'human', decide: () => null } };
   for (const p of state.players.slice(1)) controllers[p.id] = createAI(p.personality);
   const game = new Game({ state, controllers });
-  state.players[0].gold = 30;
+  state.players[0].gold = 40;
 
-  const cheap = proposeParley(game, { from: 'p0', to: 'p1', kind: 'attack', subject: 'p2', gold: 0 });
-  const rich = proposeParley(game, { from: 'p0', to: 'p1', kind: 'attack', subject: 'p2', gold: 20 });
-  assert.equal(typeof cheap.line, 'string');
-  assert.ok(rich.accepted, 'a large enough purse should move a wolf');
-  assert.equal(state.players[1].gold, RULES.startGold + 20);
-  assert.equal(state.players[0].gold, 10);
-  assert.equal(state.pacts.p1.kind, 'attack');
+  const stingy = await proposeDeal(game, {
+    proposer: 'p0',
+    transfers: [{ from: 'p1', to: 'p0', goods: { ...emptyGoods(), lands: 1 } }],
+  });
+  assert.equal(stingy.accepted, false, 'nobody gives away land for nothing');
+
+  const before = state.players[1].gold;
+  const fair = await proposeDeal(game, {
+    proposer: 'p0',
+    transfers: [
+      { from: 'p0', to: 'p1', goods: { ...emptyGoods(), gold: 20 } },
+      { from: 'p1', to: 'p0', goods: { ...emptyGoods(), lands: 1 } },
+    ],
+  });
+  assert.ok(fair.accepted, 'twenty gold should buy one land');
+  assert.equal(state.players[1].gold, before + 20);
+  assert.equal(state.players[1].lands, RULES.startLands - 1);
+  assert.equal(state.players[0].lands, RULES.startLands + 1);
 });
 
-test('a bot will not sell a promise it cannot be paid for', () => {
-  const state = createGame({ seed: 12, seats: [{ kind: 'human' }, { kind: 'ai', personality: 'loyalist' }, { kind: 'ai' }, { kind: 'ai' }] });
+test('a deal nobody can pay for does not settle', async () => {
+  const state = createGame({ seed: 12, seats: [{ kind: 'human' }, { kind: 'ai' }, { kind: 'ai' }, { kind: 'ai' }] });
   const controllers = { p0: { kind: 'human', decide: () => null } };
   for (const p of state.players.slice(1)) controllers[p.id] = createAI(p.personality);
   const game = new Game({ state, controllers });
-  const res = proposeParley(game, { from: 'p0', to: 'p1', kind: 'joinCoup', gold: 500 });
-  assert.equal(res.accepted, false, 'you cannot pay gold you do not have');
+  const res = await proposeDeal(game, {
+    proposer: 'p0',
+    transfers: [{ from: 'p0', to: 'p1', goods: { ...emptyGoods(), gold: 500 } }],
+  });
+  assert.equal(res.accepted, false);
+  assert.match(res.reason, /gold to give/);
   assert.equal(state.players[1].gold, RULES.startGold);
+});
+
+test('a three-cornered deal settles all at once', async () => {
+  const state = createGame({ seed: 13, seats: [{ kind: 'human' }, { kind: 'ai' }, { kind: 'ai' }, { kind: 'ai' }] });
+  const controllers = { p0: { kind: 'human', decide: () => null } };
+  for (const p of state.players.slice(1)) controllers[p.id] = { kind: 'ai', decide: () => ({ accept: true }) };
+  const game = new Game({ state, controllers });
+  state.players[0].gold = 20;
+  const res = await proposeDeal(game, {
+    proposer: 'p0',
+    transfers: [
+      { from: 'p0', to: 'p1', goods: { ...emptyGoods(), gold: 5 } },
+      { from: 'p1', to: 'p2', goods: { ...emptyGoods(), lands: 1 } },
+      { from: 'p2', to: 'p0', goods: { ...emptyGoods(), gold: 2 } },
+    ],
+  });
+  assert.ok(res.accepted, res.reason);
+  assert.equal(state.players[1].lands, RULES.startLands - 1);
+  assert.equal(state.players[2].lands, RULES.startLands + 1);
+  assert.equal(state.players[0].gold, 20 - 5 + 2);
 });

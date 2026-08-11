@@ -1,6 +1,6 @@
 # The King's Graces
 
-*A competitive game of medieval noble politics for 2–6 players. Serve the crown,
+*A competitive game of medieval noble politics for 3–6 players. Serve the crown,
 grow fat, or vanish into outlawry — then take the throne before someone else
 inherits it.*
 
@@ -15,7 +15,7 @@ is in Appendix B.
 
 | Item | Quantity / Value |
 |---|---|
-| Players | 2–6 |
+| Players | 3–6 |
 | Starting lands per player | 3 |
 | Starting gold per player | 6 |
 | Starting fealty per player | 0 |
@@ -26,12 +26,9 @@ is in Appendix B.
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **(10 − players) + cards remaining in the
-crown deck**. At four players that is 6 + cards, running 18 down to 6.
-
-The crown stands taller at a small table and shorter at a large one. This looks
-backwards and is not: a coup is stopped less by the crown than by whoever throws
-gold behind it, and a big table has more nobles available to do that.
+**Crown strength** at any moment = **2 + players + cards remaining in the crown
+deck**. At four players that is 6 + cards, running 18 down to 6. A bigger table
+can raise a bigger coalition, so the throne stands taller.
 
 ---
 
@@ -50,7 +47,7 @@ commitment time.
 
 ### Outlaw (−2, −3) — the shadow
 - **Peek:** after all orders are committed but before reveal — at −2, look at *either* one player's committed order *or* the top card of the crown deck; at −3, look at **both**.
-- **Turncoat:** after peeking, you hold one **change right**: before reveal, either **change your own committed order**, or **give the right to another player**, who may then change *their* own committed order (your order stays as committed). One change total, either way. You are free to negotiate a price for how you use it — or for not using it at all. Deals are table talk — never binding.
+- **Turncoat token:** after peeking you take a **turncoat token** (hold at most two). Anyone holding one may spend it in the whispers step to change their own sealed order. Tokens are goods, not rights — sell one at the deal table and the buyer can spend it themselves.
 - The crown taxes you at the highest rate (§6).
 
 ---
@@ -59,15 +56,16 @@ commitment time.
 
 One loop, five steps:
 
-1. **Crown flip.** Reveal the top crown card and resolve it immediately (§6).
-2. **Table talk.** Anyone may put a proposal to anyone: gold for a sword, gold for a promise, gold for nothing. Gold moves for real. Promises do not bind.
-3. **Commit.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target. Then outlaws peek and may swap their own order (§2).
-4. **Reveal & resolve.** All orders flip simultaneously. Resolution order:
-   1. **Petitions / pardons** (fealty moves now — bands recalculate),
-   2. **Attacks** (with all Supports applied),
-   3. **Spoils** (land / title transfers),
-   4. **Develops.**
-5. **Income.** Each land pays 1 gold; neutrals gain +1.
+1. **The royal card.** Reveal the top crown card and resolve it immediately (§6).
+2. **Deals.** Anyone may put a bargain to anyone. A deal is a list of transfers — gold, land, titles, turncoat tokens — between any number of houses, and settles the moment every house named in it accepts. What anybody says they will *do* is not part of the deal and binds nobody.
+3. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
+4. **Whispers.** Outlaws peek (§2) and take a turncoat token. Anyone holding a token may spend it to change their own sealed order — including a token they bought.
+5. **Reveal & resolve.** All orders flip at once and settle in a fixed order:
+   1. **Appeals and pardons** — standing moves now, so every band effect is already updated when the swords land,
+   2. **Develops** — land is settled,
+   3. **Support** — counted toward whoever it was aimed at,
+   4. **Attacks and spoils.**
+6. **Income.** Each land pays 1 gold; neutrals gain +1.
 
 **Standing rule — gold is a table-talk currency.** Any player may give any
 amount of gold to any other player at any time, for any reason (bribes, tribute,
@@ -80,12 +78,12 @@ committed to an order this round is spent and cannot be gifted or reclaimed.
 
 Each player picks exactly one per round:
 
-- **Attack [target]** — commit **1 to 6 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
-- **Support [target]** — commit **1 to 6 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
-- **Petition** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Petition is a **pardon** — pay 3 gold, jump directly to fealty 0. Because petitions resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
+- **Attack [target]** — commit **1 to 7 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
+- **Support [target]** — commit **1 to 7 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
+- **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
-**No order may carry more than 6 gold.** This is the rule that makes a
+**No order may carry more than 7 gold.** This is the rule that makes a
 usurpation a conspiracy: no purse alone outreaches the crown, so the throne has
 to be bought with somebody else's sword.
 
@@ -176,13 +174,13 @@ Two roads to the throne:
 Edges the rules above do not settle, and how this implementation resolves them.
 
 - **Support aimed at a player who both attacks and is attacked** joins their **attack** — their army is in the field. Otherwise it joins their defense.
-- **Develop resolves after spoils**, so a land settled this round cannot be looted the same round. If the neutral pool empties first (two players Develop for one remaining land), the player who misses out gets their gold back.
+- **Develop resolves before the swords**, so a land settled this round can be taken the same round. If the neutral pool empties first (two players Develop for one remaining land), the player who misses out gets their gold back.
 - **Ransom (§9)** resolves alongside petitions, and reads the target's band from the start of resolution.
 - **A player who can afford no order may Hold**, doing nothing. It is not one of the four orders and is unavailable to anyone who can afford anything else.
 - **A civil war** (contribution tie among winning conspirators) voids only the coup. Attacks between houses in the same round still resolve.
 - **A failed coup** does not shelter the conspirator: their walls are still down for everyone else's attacks that round, and land lost to another house can leave nothing to forfeit to the Crown.
 - **Title exhaustion:** if all six titles are held when a player crosses +2 or +3, the grant stays pending rather than being burned.
-- **The change right** given to another player is exercised immediately, before the reveal.
+- **Turncoat tokens** are objects, not rights. An outlaw takes one each round they are in the shadow (up to two held at once), and anyone holding one may spend it in the whispers step. That is what makes them sellable.
 - **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
 - **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
 - **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
@@ -211,9 +209,17 @@ to stay live.
 coups and six-handed games 45%, because a large table has more players free to
 shield the throne. Hence `(10 − players)`.
 
-Still open, and a rules question rather than a tuning one: **Marshal and Herald
-are worth about 1.4× the baseline while Warden, Spymaster and Chancellor sit
-below 1.0×.** Combat resolves on very small integers, so "+1 attack" and "win
-every tie" are worth far more than "+1 gold a round" or "−1 tax". The grant at
-+2 is not really a choice yet. Rebalancing those four is the next thing worth
-doing, and it needs new title text rather than a different number.
+**The open problem: the combat titles decide the game.** Marshal is worth about
+2.4× the baseline and Herald about 2.1×, while Chancellor and Spymaster are
+worth roughly half. Combat resolves on very small integers, so "+1 attack" and
+"win every tie" beat "+1 gold a round" or "−1 tax" by a wide margin. Worse, this
+is now the main engine of imbalance: the climbing lane takes about half of all
+four-player games and takes them *by force*, roughly fifteen coups for every
+inheritance — because climbing is simply the road to Marshal and Herald.
+
+Every constant available has been tried against it and none of them move it.
+Fixing it needs new text for Warden, Steward, Spymaster and Chancellor so that
+they are worth as much in their own way as +1 in a fight — and it needs a better
+instrument to measure with, because the heuristic bots cannot bargain and this
+game is decided at the deal table. `tools/agent-harness.js` puts agents in the
+seats for exactly that next pass.

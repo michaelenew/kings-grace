@@ -11,8 +11,13 @@ import { Game, describeOrder } from '../engine/game.js';
 import { createGame, crownStrength, commitCeiling } from '../engine/state.js';
 import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
-import { PARLEY_KINDS, proposeParley } from '../engine/diplomacy.js';
+import { INTENTS } from '../engine/diplomacy.js';
+import { emptyGoods } from '../engine/deals.js';
 import { el, mount, number, select } from './dom.js';
+import { sequenceCard, stageFor } from './sequence.js';
+import { referenceCard } from './reference.js';
+import { blankDraft, dealBuilder, dealOffer } from './dealtable.js';
+import { playResolution } from './animate.js';
 
 const root = document.getElementById('app');
 
@@ -25,13 +30,15 @@ const app = {
   lastSeatShown: null,
   humanSeats: new Set(),
   draft: {},
-  court: { giftTo: null, giftAmount: 1, parleyTo: null, parleyKind: 'standDown', parleySubject: null, parleyGold: 2 },
-  courtOpen: false,
-  parleyReply: null,
+  dealDraft: null,
+  dealReply: null,
+  hoveredStage: null,
+  animating: false,
   settings: {
     seed: '',
     ransom: false,
     seedFavorEarly: true,
+    animate: true,
     players: 4,
     tuning: {}, // overrides on top of the rules
     seats: Array.from({ length: PLAYER_MAX }, (_, i) => ({ kind: i === 0 ? 'human' : 'ai' })),
@@ -73,7 +80,7 @@ function humanController(pid) {
 }
 
 function isPrivate(request) {
-  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'turncoatGranted', 'offer'].includes(request.type);
+  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'proposeDeal', 'deal'].includes(request.type);
 }
 
 function answer(value) {
@@ -121,21 +128,24 @@ function startGame() {
   const game = new Game({
     state,
     controllers,
-    pause: (label) => new Promise((resolve) => {
-      if (label === 'crown') return resolve();
-      if (app.humanSeats.size === 0) return resolve();
-      app.paused = { label, resolve };
-      render();
-    }),
+    pause: async (label) => {
+      if (label === 'crown') return;
+      if (app.humanSeats.size === 0) return;
+      // Show the round rather than listing it, then wait to be dismissed.
+      if (label === 'roundEnd' && app.settings.animate) await showResolution();
+      await new Promise((resolve) => {
+        app.paused = { label, resolve };
+        render();
+      });
+    },
   });
   app.game = game;
   app.pending = null;
   app.paused = null;
   app.gate = null;
   app.lastSeatShown = null;
-  app.court.giftTo = state.players.find((p) => p.id !== firstHuman(state))?.id ?? null;
-  app.court.parleyTo = state.players.find((p) => p.kind === 'ai')?.id ?? null;
-  app.court.parleySubject = state.players.find((p) => p.id !== firstHuman(state))?.id ?? null;
+  app.dealDraft = null;
+  app.dealReply = null;
   game.subscribe(() => render());
   render();
   game.run();
@@ -148,6 +158,19 @@ function activeTuning() {
 
 function firstHuman(state) {
   return state.players.find((p) => p.kind === 'human')?.id ?? state.players[0].id;
+}
+
+/** Replay this round's resolution over the table before the recap. */
+async function showResolution() {
+  const generation = app.generation;
+  const beats = app.game?.state.beats || [];
+  if (!beats.length) return;
+  app.animating = true;
+  render();
+  const stage = root.querySelector('.round-table');
+  await playResolution(stage, beats, () => generation !== app.generation || !app.animating);
+  app.animating = false;
+  if (generation === app.generation) render();
 }
 
 function resume() {
@@ -167,8 +190,12 @@ function render() {
     root,
     topBar(s),
     el('div', { class: 'layout' }, [
-      el('div', { class: 'left' }, [boardView(s), crownView(s)]),
-      el('div', { class: 'right' }, [stageView(s), chronicleView(s)]),
+      el('div', { class: 'col-left' }, [
+        sequenceCard(s, app.hoveredStage, (id) => { app.hoveredStage = id; render(); }),
+        referenceCard(s.tuning, s.players.length),
+      ]),
+      el('div', { class: 'col-mid' }, [tableView(s)]),
+      el('div', { class: 'col-right' }, [stageView(s), chronicleView(s)]),
     ]),
   );
   const log = root.querySelector('.chronicle-scroll');
@@ -212,7 +239,11 @@ function setupScreen() {
       ]),
       el('label', { class: 'check' }, [
         el('input', { type: 'checkbox', checked: s.seedFavorEarly, onchange: (e) => { s.seedFavorEarly = e.target.checked; } }),
-        ' Seed a Favor into the first three flips (§6 tuning knob)',
+        ' Seed a Favor into the first three flips',
+      ]),
+      el('label', { class: 'check' }, [
+        el('input', { type: 'checkbox', checked: s.animate, onchange: (e) => { s.animate = e.target.checked; } }),
+        ' Play out each resolution on the table (you can turn this off mid-game)',
       ]),
       advancedPanel(),
       el('label', { class: 'field' }, [
@@ -286,6 +317,11 @@ function topBar(s) {
       stat('Phase', phaseLabel),
     ]),
     el('div', { class: 'topbar-actions' }, [
+      el('button', {
+        class: `ghost${app.settings.animate ? ' on' : ''}`,
+        title: 'Play each resolution out on the table, or settle it instantly',
+        onclick: () => { app.settings.animate = !app.settings.animate; if (!app.settings.animate) app.animating = false; render(); },
+      }, app.settings.animate ? 'Animation on' : 'Animation off'),
       el('button', { class: 'ghost', onclick: () => showRules() }, 'Rules'),
       el('button', { class: 'ghost', onclick: () => { if (confirm('Abandon this game?')) { app.game = null; render(); } } }, 'New game'),
     ]),
@@ -301,8 +337,55 @@ function stat(label, value) {
 
 // ------------------------------------------------------------------- board
 
-function boardView(s) {
-  return el('section', { class: 'board' }, s.players.map((p) => playerCard(s, p)));
+function tableView(s) {
+  const n = s.players.length;
+  const seats = s.players.map((p, i) => {
+    // Seat one at the bottom (nearest the player) and go round from there.
+    const angle = (Math.PI / 2) + (i * 2 * Math.PI) / n;
+    const x = 50 + 39 * Math.cos(angle);
+    const y = 50 + 35 * Math.sin(angle);
+    const card = playerCard(s, p);
+    card.classList.add('seated');
+    card.style.left = `${x}%`;
+    card.style.top = `${y}%`;
+    card.dataset.anchor = p.id;
+    return card;
+  });
+  return el('section', { class: `round-table seats-${n}` }, [...seats, centrePiece(s)]);
+}
+
+/** The middle of the table: the last decree, the Crown's strength, the titles. */
+function centrePiece(s) {
+  const card = s.lastCard;
+  const held = new Map();
+  for (const p of s.players) for (const t of p.titles) held.set(t, p);
+  const strength = crownStrength(s);
+  const full = s.tuning.crownBase + s.tuning.crownPerPlayer * s.players.length + s.tuning.crownPerCard * s.deckStart;
+
+  return el('div', { class: 'centre', dataset: { anchor: 'crown' } }, [
+    el('div', { class: 'centre-crown' }, [
+      el('span', { class: 'crown-card-label' }, card ? 'Last decree' : 'The Crown'),
+      el('h3', {}, card ? CARD_LABEL[card] : '—'),
+      el('p', { class: 'centre-card-text' }, card ? cardText(card, s.tuning) : 'The court has not yet convened.'),
+      el('div', { class: 'meter-row' }, [el('span', {}, 'Crown strength'), el('strong', {}, String(strength))]),
+      el('div', { class: 'meter' }, [
+        el('div', { class: 'meter-fill', style: `width:${Math.min(100, (strength / Math.max(1, full)) * 100)}%` }),
+      ]),
+    ]),
+    el('div', { class: 'centre-titles' }, [
+      el('span', { class: 'crown-card-label' }, 'Titles'),
+      el('div', { class: 'title-array' }, TITLES.map((t) => {
+        const holder = held.get(t.id);
+        return el('div', {
+          class: `title-slot${holder ? ' taken' : ''}`,
+          title: `${t.name} — ${t.text}${holder ? ` (held by ${holder.name})` : ' (unclaimed)'}`,
+        }, [
+          el('span', { class: 'title-slot-name' }, t.name),
+          el('span', { class: 'title-slot-holder' }, holder ? holder.name.split(' ')[0] : 'unclaimed'),
+        ]);
+      })),
+    ]),
+  ]);
 }
 
 function playerCard(s, p) {
@@ -322,7 +405,8 @@ function playerCard(s, p) {
     el('div', { class: 'resources' }, [
       resource('Lands', p.lands),
       resource('Gold', p.gold),
-      p.escrow > 0 ? resource('Committed', p.escrow, 'muted') : null,
+      p.escrow > 0 ? resource('Sealed', p.escrow, 'muted') : null,
+      p.turncoat > 0 ? resource('Tokens', p.turncoat, 'token') : null,
     ]),
     el('div', { class: 'titles' }, p.titles.length
       ? p.titles.map((t) => el('span', { class: 'title-chip', title: TITLE_BY_ID[t].text }, TITLE_BY_ID[t].name))
@@ -366,34 +450,19 @@ function nameOf(s, id) {
 
 // ------------------------------------------------------------- crown panel
 
-function crownView(s) {
-  const card = s.lastCard;
-  return el('section', { class: 'crown-panel' }, [
-    el('div', { class: 'crown-card' }, [
-      el('span', { class: 'crown-card-label' }, 'Last decree'),
-      el('h3', {}, card ? CARD_LABEL[card] : '—'),
-      el('p', {}, card ? cardText(card, s.tuning) : 'The court has not yet convened.'),
-    ]),
-    el('div', { class: 'crown-meter' }, [
-      el('div', { class: 'meter-row' }, [
-        el('span', {}, 'Crown strength'),
-        el('strong', {}, String(crownStrength(s))),
-      ]),
-      el('div', { class: 'meter' }, [
-        el('div', { class: 'meter-fill', style: `width:${Math.min(100, (crownStrength(s) / (s.tuning.crownBase + s.tuning.crownPerCard * s.deckStart)) * 100)}%` }),
-      ]),
-      el('div', { class: 'deck-pips' }, Array.from({ length: s.deckStart }, (_, i) => el('span', { class: `pip${i < s.deck.length ? ' full' : ''}` }))),
-      el('p', { class: 'hint' }, `${s.deck.length} card${s.deck.length === 1 ? '' : 's'} remain. When the deck runs out, the highest fealty inherits.`),
-    ]),
-  ]);
-}
-
 // ------------------------------------------------------------------- stage
 
 function stageView(s) {
   if (s.winner || s.phase === 'gameOver') return victoryPanel(s);
   if (app.gate) return gatePanel(s);
   if (app.pending) return requestPanel(s);
+  if (app.animating) {
+    return el('section', { class: 'stage' }, [
+      el('h2', { class: 'stage-title' }, `Round ${s.round} — the orders land`),
+      el('p', { class: 'blurb' }, 'Appeals settle first, then land, then support, then the swords.'),
+      el('button', { class: 'ghost', onclick: () => { app.animating = false; } }, 'Skip'),
+    ]);
+  }
   if (app.paused) return pausePanel(s);
   return el('section', { class: 'stage' }, [
     el('div', { class: 'waiting' }, [
@@ -459,6 +528,8 @@ function requestPanel(s) {
   const me = s.players.find((p) => p.id === pid);
   const body = {
     order: () => orderForm(s, me, request, view),
+    proposeDeal: () => dealPanel(s, me, request),
+    deal: () => dealOffer(s, request, answer),
     levy: () => levyForm(s, me, request),
     offer: () => offerForm(s, request),
     title: () => titleForm(request),
@@ -466,7 +537,6 @@ function requestPanel(s) {
     peekChoice: () => peekChoiceForm(request),
     peekTarget: () => peekTargetForm(s, request),
     turncoat: () => turncoatForm(s, request),
-    turncoatGranted: () => turncoatGrantedForm(s, request),
   }[request.type];
 
   return el('section', { class: 'stage' }, [
@@ -479,14 +549,15 @@ function requestPanel(s) {
 function stageTitle(request) {
   return {
     order: 'seal an order',
+    proposeDeal: 'the deal table',
+    deal: 'a bargain offered',
     levy: 'the levy',
     offer: 'a proposal',
     title: 'claim a title',
     spoils: 'take your spoils',
     peekChoice: 'what will you look at?',
     peekTarget: 'whose orders?',
-    turncoat: 'turncoat',
-    turncoatGranted: 'a change of orders',
+    turncoat: 'a turncoat token',
   }[request.type] || request.type;
 }
 
@@ -529,17 +600,29 @@ function orderForm(s, me, request, view) {
   }[d.order];
 
   return el('div', { class: 'form' }, [
-    el('div', { class: 'order-grid' }, [ORDER.ATTACK, ORDER.SUPPORT, ORDER.PETITION, ORDER.DEVELOP, ORDER.RANSOM, ORDER.HOLD]
-      .filter((o) => legal.includes(o))
-      .map((o) => el('button', {
-        class: `order-btn${d.order === o ? ' chosen' : ''}`,
-        onclick: () => { d.order = o; if (o === ORDER.PETITION || o === ORDER.DEVELOP) d.gold = 0; else d.gold = Math.max(1, Math.min(d.gold || 1, ceiling)); render(); },
-      }, [
-        el('strong', {}, ORDER_LABEL[o]),
-        el('span', { class: 'order-cost' }, o === ORDER.PETITION ? `${request.petitionCost} gold`
-          : o === ORDER.DEVELOP ? `${t.developCost} gold`
-            : o === ORDER.RANSOM ? 'free' : o === ORDER.HOLD ? '—' : `1–${ceiling} gold`),
-      ]))),
+    el('div', { class: 'order-grid' }, orderChoices(s, me, request).map(({ order: o, ok, why }) => el('button', {
+      class: `order-btn${d.order === o ? ' chosen' : ''}${ok ? '' : ' locked'}`,
+      disabled: !ok,
+      title: ok ? null : why,
+      onclick: () => {
+        if (!ok) return;
+        d.order = o;
+        if (o === ORDER.PETITION || o === ORDER.DEVELOP) d.gold = 0;
+        else d.gold = Math.max(1, Math.min(d.gold || 1, ceiling));
+        render();
+      },
+    }, [
+      el('strong', {}, ORDER_LABEL[o]),
+      el('span', { class: 'order-cost' }, o === ORDER.PETITION ? `${request.petitionCost} gold`
+        : o === ORDER.DEVELOP ? `${t.developCost} gold`
+          : o === ORDER.RANSOM ? 'free' : o === ORDER.HOLD ? '—' : `1–${ceiling} gold`),
+    ]))),
+    (() => {
+      const locked = orderChoices(s, me, request).filter((c) => !c.ok);
+      return locked.length
+        ? el('p', { class: 'locked-note' }, locked.map((c) => `${ORDER_LABEL[c.order]}: ${c.why}`).join(' · '))
+        : null;
+    })(),
     el('p', { class: 'blurb' }, blurb),
     needsTarget ? el('label', { class: 'field' }, [
       el('span', {}, 'Target'),
@@ -570,11 +653,35 @@ function orderForm(s, me, request, view) {
       class: 'primary big',
       onclick: () => answer({ order: d.order, target: needsTarget ? d.target : null, gold: needsGold ? Math.min(d.gold || 1, me.gold) : 0 }),
     }, 'Seal the order'),
-    courtPanel(s, me),
   ]);
 }
 
 const BAND_OUTLAW_KEY = 'outlaw';
+
+/**
+ * Every order, always, with a reason when one is out of reach. Hiding what you
+ * cannot afford makes the board look smaller than it is; greying it out tells
+ * you what to save up for.
+ */
+function orderChoices(s, me, request) {
+  const t = s.tuning;
+  const legal = request.legal;
+  const orders = [ORDER.ATTACK, ORDER.SUPPORT, ORDER.PETITION, ORDER.DEVELOP];
+  if (s.options.ransom) orders.push(ORDER.RANSOM);
+  if (legal.includes(ORDER.HOLD)) orders.push(ORDER.HOLD);
+  return orders.map((order) => {
+    if (legal.includes(order)) return { order, ok: true };
+    let why = 'not available this round';
+    if (order === ORDER.ATTACK || order === ORDER.SUPPORT) why = `needs at least 1 gold, you hold ${me.gold}`;
+    else if (order === ORDER.PETITION) why = `costs ${request.petitionCost} gold, you hold ${me.gold}`;
+    else if (order === ORDER.DEVELOP) {
+      why = s.neutralPool <= 0
+        ? 'no unclaimed land is left'
+        : `costs ${t.developCost} gold, you hold ${me.gold}`;
+    } else if (order === ORDER.RANSOM) why = 'already used, once per game';
+    return { order, ok: false, why };
+  });
+}
 
 function attackPreview(s, me, d) {
   const target = s.players.find((p) => p.id === d.target);
@@ -597,8 +704,8 @@ function attackPreview(s, me, d) {
 function levyForm(s, me, request) {
   return el('div', { class: 'form choices' }, [
     el('p', { class: 'blurb' }, 'The Crown demands its levy.'),
-    el('button', { class: 'choice', disabled: me.gold < 2, onclick: () => answer('pay') }, [
-      el('strong', {}, 'Pay 2 gold'), el('span', {}, `You hold ${me.gold}.`),
+    el('button', { class: 'choice', disabled: me.gold < request.cost, onclick: () => answer('pay') }, [
+      el('strong', {}, `Pay ${request.cost} gold`), el('span', {}, `You hold ${me.gold}.`),
     ]),
     el('button', { class: 'choice', onclick: () => answer('fealty') }, [
       el('strong', {}, 'Drop 1 fealty'),
@@ -681,91 +788,53 @@ function peekTargetForm(s, request) {
 }
 
 function turncoatForm(s, request) {
-  const d = app.draft;
-  d.giveTo = d.giveTo || request.others[0];
   return el('div', { class: 'form choices' }, [
-    el('p', { class: 'blurb' }, 'One change of orders. Spend it on yourself, sell it to someone else, or let the round stand. Whatever you were promised for it is not binding.'),
+    el('p', { class: 'blurb' }, `You hold ${request.tokens} turncoat token${request.tokens === 1 ? '' : 's'}. Spending one lets you change your sealed order now that you have seen what you have seen. Keeping one is worth gold to somebody at the deal table.`),
     el('button', { class: 'choice', onclick: () => answer({ action: 'change' }) }, [
-      el('strong', {}, 'Change my own order'), el('span', {}, 'Your committed gold comes back and you commit again.'),
-    ]),
-    el('div', { class: 'choice-inline' }, [
-      select(request.others.map((id) => ({ value: id, label: nameOf(s, id) })), d.giveTo, (v) => { d.giveTo = v; }),
-      el('button', { class: 'choice slim', onclick: () => answer({ action: 'give', to: d.giveTo }) }, 'Give them the change'),
+      el('strong', {}, 'Spend a token and change my order'),
+      el('span', {}, 'Your committed gold comes back and you commit again.'),
     ]),
     el('button', { class: 'choice', onclick: () => answer({ action: 'none' }) }, [
-      el('strong', {}, 'Let the orders stand'), el('span', {}, 'Sometimes the threat was the point.'),
+      el('strong', {}, 'Keep it'),
+      el('span', {}, 'Sometimes the threat was the point.'),
     ]),
   ]);
 }
+// ------------------------------------------------------------- the deal table
 
-function turncoatGrantedForm(s, request) {
-  return el('div', { class: 'form choices' }, [
-    el('p', { class: 'blurb' }, request.text),
-    el('button', { class: 'choice', onclick: () => answer({ action: 'change' }) }, 'Change my order'),
-    el('button', { class: 'choice', onclick: () => answer({ action: 'none' }) }, 'Leave it as it is'),
-  ]);
-}
-
-// ------------------------------------------------------------- table talk
-
-function courtPanel(s, me) {
-  const c = app.court;
-  const others = s.players.filter((p) => p.id !== me.id);
-  const bots = others.filter((p) => p.kind === 'ai');
-  if (!c.giftTo || !others.some((p) => p.id === c.giftTo)) c.giftTo = others[0].id;
-  if (bots.length && (!c.parleyTo || !bots.some((p) => p.id === c.parleyTo))) c.parleyTo = bots[0].id;
-  if (!c.parleySubject || !others.some((p) => p.id === c.parleySubject)) c.parleySubject = others[0].id;
-  const kind = PARLEY_KINDS.find((k) => k.id === c.parleyKind) || PARLEY_KINDS[0];
-
-  const header = el('button', {
-    class: 'court-toggle',
-    onclick: () => { app.courtOpen = !app.courtOpen; render(); },
-  }, `${app.courtOpen ? '▾' : '▸'} Table talk — gold, bribes and promises`);
-
-  if (!app.courtOpen) return el('div', { class: 'court' }, [header]);
-
-  return el('div', { class: 'court open' }, [
-    header,
-    el('p', { class: 'hint' }, 'Gold given is gone for good. Everything else is words. Gold already committed to your order cannot be given away.'),
-    el('div', { class: 'court-row' }, [
-      el('span', { class: 'court-label' }, 'Give'),
-      number(c.giftAmount, 1, Math.max(1, me.gold), (v) => { c.giftAmount = v; }, { class: 'narrow' }),
-      el('span', {}, 'gold to'),
-      select(others.map((p) => ({ value: p.id, label: p.name })), c.giftTo, (v) => { c.giftTo = v; }),
-      el('button', {
-        class: 'ghost small', disabled: me.gold < 1,
-        onclick: () => { app.game.gift(me.id, c.giftTo, Math.min(c.giftAmount, me.gold)); render(); },
-      }, 'Send'),
-    ]),
-    bots.length ? el('div', { class: 'court-row wrap' }, [
-      el('span', { class: 'court-label' }, 'Ask'),
-      select(bots.map((p) => ({ value: p.id, label: p.name })), c.parleyTo, (v) => { c.parleyTo = v; render(); }),
-      select(PARLEY_KINDS.map((k) => ({ value: k.id, label: k.label })), c.parleyKind, (v) => { c.parleyKind = v; render(); }),
-      kind.needsSubject
-        ? select(others.filter((p) => p.id !== c.parleyTo).map((p) => ({ value: p.id, label: p.name })), c.parleySubject, (v) => { c.parleySubject = v; })
-        : null,
-      el('span', {}, 'for'),
-      number(c.parleyGold, 0, Math.max(0, me.gold), (v) => { c.parleyGold = v; }, { class: 'narrow' }),
-      el('span', {}, 'gold'),
-      el('button', {
-        class: 'ghost small',
-        onclick: () => {
-          const res = proposeParley(app.game, {
-            from: me.id, to: c.parleyTo, kind: c.parleyKind,
-            subject: kind.needsSubject ? c.parleySubject : null,
-            gold: Math.min(c.parleyGold, me.gold),
-          });
-          app.parleyReply = { name: nameOf(s, c.parleyTo), ...res };
-          render();
-        },
-      }, 'Propose'),
-    ]) : null,
-    app.parleyReply ? el('p', { class: `reply ${app.parleyReply.accepted ? 'yes' : 'no'}` },
-      `${app.parleyReply.name}: “${app.parleyReply.line}”`) : null,
-    Object.keys(s.pacts).length
-      ? el('p', { class: 'hint' }, `Pledged this round: ${Object.keys(s.pacts).map((id) => nameOf(s, id)).join(', ')}. Pledges are not binding.`)
-      : null,
-  ]);
+function dealPanel(s, me, request) {
+  if (!app.dealDraft) app.dealDraft = blankDraft(me.id, request.others);
+  const draft = app.dealDraft;
+  return dealBuilder(s, me.id, draft, {
+    onChange: () => render(),
+    reply: app.dealReply,
+    onPass: () => { app.dealDraft = null; app.dealReply = null; answer(null); },
+    onPropose: async () => {
+      const pending = app.pending;
+      const intent = draft.intent
+        ? { kind: draft.intent, of: draft.intentOf, subject: draft.intentSubject }
+        : null;
+      const deal = {
+        proposer: me.id,
+        transfers: draft.transfers.map((t) => ({ from: t.from, to: t.to, goods: { ...t.goods, titles: [...t.goods.titles] } })),
+        intent,
+      };
+      // Put it to the table without ending our own turn: a refusal should let
+      // us try again rather than cost us the round.
+      app.pending = null;
+      const result = await app.game.putDeal(deal);
+      if (result.accepted) {
+        app.dealDraft = null;
+        app.dealReply = null;
+        pending.resolve(null);
+        render();
+      } else {
+        app.pending = pending;
+        app.dealReply = { accepted: false, text: result.reason || 'They will not have it.' };
+        render();
+      }
+    },
+  });
 }
 
 // ---------------------------------------------------------------- chronicle
