@@ -11,7 +11,7 @@ import {
   TITLE_BY_ID, bandOf, clampFealty,
 } from './constants.js';
 import {
-  commitCeiling, createGame, crownStrength, hasTitle, legalOrders, petitionCostFor,
+  commitCeiling, createGame, crownStrength, hasTitle, legalOrders, legalTargets, petitionCostFor,
   claimableTitles, playerById, unclaimedTitles, viewFor,
 } from './state.js';
 import { INTENT_BY_ID, describeIntent } from './diplomacy.js';
@@ -412,7 +412,7 @@ export class Game {
     if (!legal.includes(order)) order = legal[0];
 
     if (order === ORDER.ATTACK || order === ORDER.SUPPORT) {
-      const targets = s.players.filter((x) => x.id !== pid).map((x) => x.id).concat(CROWN);
+      const targets = legalTargets(s, p, order);
       if (!targets.includes(target)) target = targets[0];
       gold = Math.max(1, Math.min(Math.floor(gold) || 1, commitCeiling(s, p)));
     } else if (order === ORDER.PETITION) {
@@ -503,12 +503,29 @@ export class Game {
     }
   }
 
+  /**
+   * Show the peeker what they bought, and tell them plainly whether they can do
+   * anything with it. Looking and *acting on what you saw* are gated on
+   * different things — you peek because you are an outlaw, you may change your
+   * sealed order because you hold a turncoat token — and a player who peeked
+   * with an empty hand used to watch the round resolve with no explanation.
+   */
+  async showPeek(peeker, found) {
+    return this.ask(peeker.id, {
+      type: 'peekResult',
+      ...found,
+      canChange: peeker.turncoat > 0,
+      tokens: peeker.turncoat,
+    });
+  }
+
   async doPeek(peeker, kind, viaSpymaster = false) {
     const s = this.state;
     if (kind === 'card') {
       const top = s.deck[0] ?? null;
       s.knowledge[peeker.id].topCard = top;
       this.emit('peek', `${peeker.name} looks at the top of the crown deck.`, { secret: true, pid: peeker.id });
+      await this.showPeek(peeker, { kind: 'card', card: top });
       return;
     }
     const others = s.players.filter((x) => x.id !== peeker.id).map((x) => x.id);
@@ -521,6 +538,7 @@ export class Game {
     const target = others.includes(answer) ? answer : others[0];
     s.knowledge[peeker.id].orders[target] = { ...s.commitments[target] };
     this.emit('peek', `${peeker.name} reads ${this.nameOf(target)}'s sealed order${viaSpymaster ? ' (Spymaster)' : ''}.`, { secret: true, pid: peeker.id });
+    await this.showPeek(peeker, { kind: 'order', who: target, order: s.commitments[target] ? { ...s.commitments[target] } : null });
   }
 
   // --------------------------------------------------- 3. reveal & resolve
@@ -768,6 +786,11 @@ export class Game {
         s.beats.push({ kind: 'attack', actor: a.attacker, target: targetId, strength: a.strength, defense: def, won: wins });
         if (!wins) {
           this.emit('combat', `${attacker.name} strikes at ${defender.name} with ${a.strength} and is thrown back.`);
+          // A broken assault leaves its baggage on the field. The attacker's
+          // own walls are down by definition, so a repelled army can be
+          // stripped of a coronet as easily as of a field — which is what makes
+          // digging in something you do to *gain*, not merely to survive.
+          if (s.tuning.repelSpoils) await this.takeSpoils(defender, attacker, true);
           continue;
         }
         this.emit('combat', `${attacker.name} strikes at ${defender.name} with ${a.strength} and breaks through.`);

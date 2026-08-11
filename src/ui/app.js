@@ -538,9 +538,8 @@ function playerCard(s, p) {
     el('div', { class: 'resources' }, [
       resource('Lands', p.lands),
       resource('Gold', p.gold),
-      p.escrow > 0 ? resource('Sealed', p.escrow, 'muted') : null,
-      p.turncoat > 0 ? resource('Tokens', p.turncoat, 'token') : null,
     ]),
+    statusRow(s, p),
     el('div', { class: 'titles' }, p.titles.length
       ? p.titles.map((t) => el('span', { class: 'title-chip', title: TITLE_BY_ID[t].text }, TITLE_BY_ID[t].name))
       : [el('span', { class: 'title-chip empty' }, 'no titles')]),
@@ -551,6 +550,45 @@ function playerCard(s, p) {
         ? el('div', { class: 'order-line sealed' }, 'orders sealed')
         : null,
   ]);
+}
+
+/**
+ * The things about a house that are not a number in a box: whether its army is
+ * at home, and what it is holding that is not gold or land.
+ *
+ * The army line matters most on a levy round, because whether a house served or
+ * refused is the difference between walls 0 and walls 2 — and it is public, so
+ * hiding it in the log was hiding a fact the table is entitled to act on.
+ */
+function statusRow(s, p) {
+  const t = s.tuning;
+  const attacking = s.revealed && s.commitments[p.id]?.order === ORDER.ATTACK;
+  const away = p.noArmy || attacking;
+  const chips = [];
+  if (away) {
+    chips.push(el('button', {
+      class: 'status-chip away',
+      onclick: () => openPopover(`${p.name}: host in the field`, p.noArmy
+        ? `They answered the Crown's levy, so their army is marching under the royal banner. Their walls are 0 this round — not ${t.walls} — and a house with no walls can be stripped of a title, not just a land. Everyone could see this before orders were sealed.`
+        : `Their order was an attack, so their own gate is unmanned. Walls 0 this round instead of ${t.walls}.`),
+    }, p.noArmy ? '⚑ host levied — no walls' : '⚔ in the field — no walls'));
+  } else if (s.lastCard === 'levy') {
+    chips.push(el('button', {
+      class: 'status-chip home',
+      onclick: () => openPopover(`${p.name}: host at home`, `They refused the Crown's levy and kept their army, so their walls are the full ${t.walls}. It cost them ${t.levyRefusal} fealty.`),
+    }, `⛨ refused the levy — walls ${t.walls}`));
+  }
+  if (p.turncoat > 0) {
+    chips.push(el('button', {
+      class: 'status-chip token',
+      onclick: () => openPopover('Turncoat tokens', [
+        `${p.name} holds ${p.turncoat}.`,
+        'A turncoat token lets its holder change their own sealed order at the whispers step, after the peeking is done. One is taken every round a house sits in the outlaw band.',
+        `Tokens are goods, not rights: they can be sold at the deal table, and the buyer can spend them. That is why a house at neutral standing can be holding several — a house may only *take* ${t.turncoatMax} from the shadow, but there is no limit on how many it can buy.`,
+      ].join('\n\n')),
+    }, `${p.turncoat} turncoat token${p.turncoat === 1 ? '' : 's'}`));
+  }
+  return chips.length ? el('div', { class: 'status-row' }, chips) : null;
 }
 
 /**
@@ -700,6 +738,7 @@ function requestPanel(s) {
     offer: () => offerForm(s, request),
     title: () => titleForm(request),
     spoils: () => spoilsForm(s, request),
+    peekResult: () => peekResultForm(s, request),
     peekChoice: () => peekChoiceForm(request),
     peekTarget: () => peekTargetForm(s, request),
     turncoat: () => turncoatForm(s, request),
@@ -720,6 +759,7 @@ function stageTitle(request) {
     offer: 'a proposal',
     title: 'claim a title',
     spoils: 'take your spoils',
+    peekResult: 'what the shadow showed you',
     peekChoice: 'what will you look at?',
     peekTarget: 'whose orders?',
     turncoat: 'a turncoat token',
@@ -753,7 +793,9 @@ function orderForm(s, me, request, view) {
 
   const blurb = {
     [ORDER.ATTACK]: 'Commit troops. Your own walls drop to 0 — an army in the field cannot hold a gate.',
-    [ORDER.SUPPORT]: 'Your gold joins the target’s attack if they strike, otherwise their defense.',
+    [ORDER.SUPPORT]: d.target === me.id
+      ? 'Dig in. Your gold goes onto your own walls, and nobody can see that you did it.'
+      : 'Your gold joins the target’s attack if they strike, otherwise their defense.',
     [ORDER.PETITION]: bandOf(me.fealty) === BAND_OUTLAW_KEY
       ? `A pardon: ${t.pardonCost} gold, straight back to fealty 0, before the swords land.`
       : atCeiling
@@ -792,7 +834,8 @@ function orderForm(s, me, request, view) {
     needsTarget ? el('label', { class: 'field' }, [
       el('span', {}, 'Target'),
       select(
-        [...others.map((p) => ({ value: p.id, label: `${p.name} (${BAND_LABEL[bandOf(p.fealty)]}, ${p.lands} lands)` })),
+        [...(d.order === ORDER.SUPPORT ? [{ value: me.id, label: 'Your own gate (dig in)' }] : []),
+          ...others.map((p) => ({ value: p.id, label: `${p.name} (${BAND_LABEL[bandOf(p.fealty)]}, ${p.lands} lands)` })),
           { value: CROWN, label: `The Crown (strength ${crownStrength(s)})` }],
         d.target,
         (v) => { d.target = v; render(); },
@@ -940,6 +983,38 @@ function spoilsForm(s, request) {
         el('strong', {}, `Take the title of ${TITLE_BY_ID[t].name}`), el('span', {}, TITLE_BY_ID[t].text),
       ])),
     ]),
+  ]);
+}
+
+/**
+ * What the peek bought, and — the part that was missing — whether the peeker
+ * can do anything with it. Peeking and changing your order are gated on
+ * different things, and a player who looked with an empty hand used to watch
+ * the round resolve without ever being told why nothing was offered.
+ */
+function peekResultForm(s, request) {
+  const found = request.kind === 'card'
+    ? (request.card
+      ? el('div', { class: 'peek-find' }, [
+        el('h4', {}, CARD_LABEL[request.card]),
+        el('p', {}, cardText(request.card, s.tuning, s.options)),
+      ])
+      : el('p', { class: 'blurb' }, 'The deck is spent — there is no next card to see.'))
+    : el('div', { class: 'peek-find' }, [
+      el('h4', {}, nameOf(s, request.who)),
+      el('p', {}, request.order
+        ? describeOrder(request.order, (id) => nameOf(s, id), s.tuning.pardonCost)
+        : 'They have sealed nothing.'),
+    ]);
+  return el('div', { class: 'form' }, [
+    el('p', { class: 'blurb' }, request.kind === 'card'
+      ? 'You look at the top of the royal deck. Next round opens with this.'
+      : 'You read their sealed order. It can still change if they hold a turncoat token.'),
+    found,
+    el('p', { class: request.canChange ? 'blurb' : 'warn' }, request.canChange
+      ? `You hold ${request.tokens} turncoat token${request.tokens === 1 ? '' : 's'}, so you may still change your own sealed order after this.`
+      : 'You hold no turncoat token, so your own order stands as sealed. A token is taken every round you spend in the outlaw band, and they can be bought at the deal table.'),
+    el('button', { class: 'primary big', onclick: () => answer(null) }, 'Keep it to yourself'),
   ]);
 }
 

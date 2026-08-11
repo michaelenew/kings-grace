@@ -365,6 +365,42 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           why: 'honour a bargain',
         });
       }
+      // Dig in. The only defence a house can raise on its own, and with a
+      // repelled army forfeiting spoils it is not purely defensive: a gate that
+      // holds takes a field off whoever tried it.
+      //
+      // Priced as an expectation, because a wall nobody tests is wasted gold.
+      // Scored flat instead, the bots dug in on 16% of all orders — most of
+      // them against an attack that never came — and fighting collapsed.
+      {
+        const reach = (o) => (t.commitCap == null ? o.gold : Math.min(o.gold, t.commitCap));
+        const walls = me.noArmy ? 0 : t.walls;
+        const prize = (h) => h.lands * 0.8
+          + h.titles.reduce((x, id) => x + TITLE_WORTH(id, view) * 0.25, 0)
+          + Math.min(h.gold, t.spoilsGold || 0) * 0.5;
+        const mine = prize(me);
+        const able = others.filter((o) => reach(o) > walls);
+        const rivals = others.reduce((x, o) => x + prize(o), 0) / Math.max(1, others.length);
+        // Roughly: somebody has to be able to force the gate, and I have to be
+        // the most tempting thing on the board for it to be me.
+        const odds = able.length
+          ? clamp(0.3 * (mine / Math.max(1, rivals)) * (able.length / Math.max(1, others.length)), 0, 0.6)
+          : 0;
+        const strongest = able.reduce((m, o) => Math.max(m, reach(o)), 0);
+        for (const spend of new Set([Math.min(2, ceiling), clamp(strongest - walls + 1, 1, ceiling)])) {
+          if (spend < 1 || spend > ceiling || odds <= 0) continue;
+          const holds = spend + walls >= strongest;
+          const saved = mine * (holds ? 0.85 : 0.3);
+          const bounty = holds && t.repelSpoils ? 3.5 : 0;
+          candidates.push({
+            order: ORDER.SUPPORT,
+            target: me.id,
+            gold: spend,
+            score: odds * (saved + bounty) - spend * 0.55 + pull(doctrine, 'support') * 0.3,
+            why: 'dig in',
+          });
+        }
+      }
       // Hold a wall for somebody you trust. It is the cheapest thing in the
       // game that buys you a friend, and unlike shielding the throne it makes a
       // specific house owe you rather than nobody at all.

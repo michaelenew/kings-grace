@@ -63,7 +63,9 @@ commitment time.
 
 ### Outlaw (−2, −3) — the shadow
 - **Peek:** after all orders are committed but before reveal — at −2, look at *either* one player's committed order *or* the top card of the crown deck; at −3, look at **both**.
-- **Turncoat token:** after peeking you take a **turncoat token** (hold at most two). Anyone holding one may spend it in the whispers step to change their own sealed order. Tokens are goods, not rights — sell one at the deal table and the buyer can spend it themselves.
+- **Turncoat token:** after peeking you take a **turncoat token**. Anyone holding one may spend it in the whispers step to change their own sealed order. Tokens are goods, not rights — sell one at the deal table and the buyer can spend it themselves.
+- The **cap of two is on taking**, not on holding: a house may only draw two from the shadow, and there is no limit on how many it can buy. That is why a house at neutral standing can be sitting on five.
+- **Peeking and changing are separate rights.** You look because you are an outlaw; you may change because you hold a token. A house that peeks with an empty hand has bought information and nothing else.
 - The crown taxes you at the highest rate (§6).
 
 ---
@@ -100,7 +102,7 @@ order this round is spent and cannot be traded.
 Each player picks exactly one per round:
 
 - **Attack [target]** — commit **1 to 9 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
-- **Support [target]** — commit **1 to 9 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
+- **Support [target]** — commit **1 to 9 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies. **The target may be yourself**: digging in puts the gold on your own walls, and because orders are sealed nobody can see that you did it.
 - **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
@@ -142,6 +144,16 @@ raided, gold piled up, and the back half of the game was everyone parking coin
 on Support. It is also the game's real gold sink: war destroys the gold
 committed to it and moves the rest, and it does both in proportion to how much
 there is to fight over.
+
+**A repelled attacker pays the same spoils they came for.** An army thrown back
+leaves its baggage on the field, and its own walls are down by definition, so a
+broken assault costs the attacker plunder and a field — or a coronet. This is
+what makes digging in a play rather than a tax: a gate that holds takes
+something off whoever tested it.
+
+Before these two rules, **92% of attacks broke through**, defence was exactly
+zero in 57% of them, and only 4% of defences had anything above bare walls at
+all. Walls are flat and passive; a house with no friends had no move.
 
 **Multiple attacks on one target** resolve independently against the same defense, in descending attack-strength order (Herald, then random, breaks ordering ties). Each successful attack takes its own spoils.
 

@@ -134,8 +134,14 @@ test('bots only ever commit orders they can afford', async () => {
       const c = originalCommit(pid, answer);
       assert.ok(c.gold <= before, `${pid} overcommitted on seed ${seed}`);
       if (c.order === ORDER.ATTACK || c.order === ORDER.SUPPORT) assert.ok(c.gold >= 1);
-      if (c.order === ORDER.SUPPORT || c.order === ORDER.ATTACK) {
-        assert.ok(c.target === CROWN || game.state.players.some((p) => p.id === c.target && p.id !== pid));
+      // Support may aim at your own gate (digging in); an attack may not.
+      if (c.order === ORDER.ATTACK) {
+        assert.ok(c.target === CROWN || game.state.players.some((p) => p.id === c.target && p.id !== pid),
+          `${pid} attacked ${c.target} on seed ${seed}`);
+      }
+      if (c.order === ORDER.SUPPORT) {
+        assert.ok(c.target === CROWN || game.state.players.some((p) => p.id === c.target),
+          `${pid} supported ${c.target} on seed ${seed}`);
       }
       return c;
     };

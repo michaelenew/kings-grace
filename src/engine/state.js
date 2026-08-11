@@ -167,12 +167,19 @@ export function petitionCostFor(state, player) {
   return bandOf(player.fealty) === BAND.OUTLAW ? state.tuning.pardonCost : state.tuning.petitionCost;
 }
 
-/** Legal targets for attack/support/ransom. */
+/**
+ * Legal targets for attack/support/ransom.
+ *
+ * Support may be aimed at yourself — digging in. It is the only defence a house
+ * can raise on its own initiative: walls are flat and passive, and everything
+ * else has to be bought from a neighbour. Because orders are sealed, an
+ * attacker cannot know whether you dug in, which is the bluff the game was
+ * missing.
+ */
 export function legalTargets(state, player, order) {
   const others = state.players.filter((p) => p.id !== player.id).map((p) => p.id);
-  if (order === ORDER.ATTACK || order === ORDER.SUPPORT || order === ORDER.RANSOM) {
-    return [...others, CROWN];
-  }
+  if (order === ORDER.SUPPORT) return [player.id, ...others, CROWN];
+  if (order === ORDER.ATTACK || order === ORDER.RANSOM) return [...others, CROWN];
   return [];
 }
 

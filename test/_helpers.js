@@ -52,6 +52,19 @@ export function get(state, pid) {
   return state.players.find((p) => p.id === pid);
 }
 
+/**
+ * Did this attack break through? Reads the combat log rather than counting the
+ * defender's fields, because who ends up holding what depends on the spoils
+ * rules — and these tests are about whether the blow landed.
+ */
+export function brokeThrough(state, attackerId, defenderId) {
+  const name = (id) => state.players.find((p) => p.id === id).name;
+  const line = state.log.filter((e) => e.kind === 'combat'
+    && e.text.startsWith(`${name(attackerId)} strikes at ${name(defenderId)}`)).pop();
+  if (!line) throw new Error(`no attack from ${attackerId} on ${defenderId} in the log`);
+  return line.text.includes('breaks through');
+}
+
 /** Give every player a legal, harmless order unless one was already committed. */
 export function fillOrders(game, orders) {
   for (const [pid, order] of Object.entries(orders)) game.commit(pid, order);

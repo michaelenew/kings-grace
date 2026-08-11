@@ -5,7 +5,7 @@ import { BAND, CARD, CROWN, ORDER, bandOf } from '../src/engine/constants.js';
 import { buildDeck, crownStrength, legalOrders } from '../src/engine/state.js';
 import { RULES, deckSize, neutralPoolFor } from '../src/engine/tuning.js';
 import { makeRng } from '../src/engine/rng.js';
-import { fillOrders, get, makeGame, set } from './_helpers.js';
+import { brokeThrough, fillOrders, get, makeGame, set } from './_helpers.js';
 
 // ---------------------------------------------------------------- setup (§1)
 
@@ -252,8 +252,10 @@ test('develop takes a land from the pool; a depleted pool refunds the purse', as
 
 // -------------------------------------------------------------- combat (§5)
 
-test('walls are 2 and ties favor the defender', async () => {
+test('walls are 2, ties favor the defender, and a repelled army pays for it', async () => {
   const g = makeGame();
+  const t = g.state.tuning;
+  const purse = get(g.state, 'p0').gold;
   fillOrders(g, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
     p1: { order: ORDER.PETITION },
@@ -261,8 +263,23 @@ test('walls are 2 and ties favor the defender', async () => {
     p3: { order: ORDER.PETITION },
   });
   await g.resolvePhase();
-  assert.equal(get(g.state, 'p1').lands, 3, 'a tie is thrown back');
+  assert.equal(get(g.state, 'p0').lands, 2, 'the broken assault leaves a field behind');
+  assert.equal(get(g.state, 'p1').lands, 4, 'and the defender takes it');
+  assert.equal(get(g.state, 'p1').gold >= t.spoilsGold, true, 'along with the baggage');
+  assert.ok(get(g.state, 'p0').gold < purse - 2, 'the attacker paid the commitment and the plunder');
+});
+
+test('a repelled attacker keeps everything when the rule is off', async () => {
+  const g = makeGame({ tuning: { repelSpoils: false } });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
   assert.equal(get(g.state, 'p0').lands, 3);
+  assert.equal(get(g.state, 'p1').lands, 3);
 });
 
 test('strictly greater takes a land', async () => {
@@ -290,7 +307,10 @@ test('an attacker has no walls, and their titles can be stripped', async () => {
   await g.resolvePhase();
   assert.equal(get(g.state, 'p1').titles.length, 0);
   assert.deepEqual(get(g.state, 'p0').titles, ['marshal']);
-  assert.equal(get(g.state, 'p1').lands, 3, 'the title was taken instead of a land');
+  // p1 also attacked p2 and was thrown back by p2's walls, so p1 forfeits a
+  // field to p2 — both of these houses had their gates open.
+  assert.equal(get(g.state, 'p1').lands, 2, 'the title went instead of a land, but p2 repelled them');
+  assert.equal(get(g.state, 'p2').lands, 4);
 });
 
 test('Marshal adds to attack and Warden adds to defense', async () => {
@@ -318,7 +338,7 @@ test('a favorite punches down but not sideways or up', async () => {
     p3: { order: ORDER.PETITION },
   });
   await down.resolvePhase();
-  assert.equal(get(down.state, 'p1').lands, 2);
+  assert.ok(brokeThrough(down.state, 'p0', 'p1'), 'punching down lands');
 
   // Same attack against an equal: no bonus, 1 against 2, thrown back.
   const level = makeGame();
@@ -331,7 +351,7 @@ test('a favorite punches down but not sideways or up', async () => {
     p3: { order: ORDER.PETITION },
   });
   await level.resolvePhase();
-  assert.equal(get(level.state, 'p1').lands, 3);
+  assert.ok(!brokeThrough(level.state, 'p0', 'p1'), 'punching sideways does not');
 });
 
 test('support goes to the target\'s attack when they attack, else to their defense', async () => {
@@ -343,7 +363,7 @@ test('support goes to the target\'s attack when they attack, else to their defen
     p3: { order: ORDER.PETITION },
   });
   await attackSide.resolvePhase();
-  assert.equal(get(attackSide.state, 'p1').lands, 2);
+  assert.ok(brokeThrough(attackSide.state, 'p0', 'p1'), 'the support rode with the army');
 
   const defenseSide = makeGame();
   fillOrders(defenseSide, {
@@ -353,7 +373,7 @@ test('support goes to the target\'s attack when they attack, else to their defen
     p3: { order: ORDER.PETITION },
   });
   await defenseSide.resolvePhase();
-  assert.equal(get(defenseSide.state, 'p1').lands, 3);
+  assert.ok(!brokeThrough(defenseSide.state, 'p0', 'p1'), 'the support held the wall');
 });
 
 test('Herald wins ties it is party to, attacking or defending', async () => {
@@ -366,7 +386,7 @@ test('Herald wins ties it is party to, attacking or defending', async () => {
     p3: { order: ORDER.PETITION },
   });
   await attacking.resolvePhase();
-  assert.equal(get(attacking.state, 'p1').lands, 2);
+  assert.ok(brokeThrough(attacking.state, 'p0', 'p1'), 'the Herald takes the tie');
 
   const defending = makeGame();
   set(defending.state, 'p1', { titles: ['herald'] });
@@ -377,7 +397,7 @@ test('Herald wins ties it is party to, attacking or defending', async () => {
     p3: { order: ORDER.PETITION },
   });
   await defending.resolvePhase();
-  assert.equal(get(defending.state, 'p1').lands, 3);
+  assert.ok(!brokeThrough(defending.state, 'p0', 'p1'), 'and holds it on defence');
 });
 
 test('several attacks hit the same defense and each takes its own spoils', async () => {

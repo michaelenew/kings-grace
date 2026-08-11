@@ -89,6 +89,17 @@ export const RULES = {
    */
   spoilsGold: 4,
   /**
+   * A repelled attacker pays the defender the same spoils they came for.
+   *
+   * Without this, defence is pure loss: walls are flat and passive, you cannot
+   * spend anything on your own gate, and 92% of attacks broke through. With it,
+   * digging in stops being a way to survive a round and becomes a way to profit
+   * from one — a choice that furthers your own ends rather than a tax on having
+   * enemies. The attacker's walls are down by definition, so their coronet is
+   * on the table too.
+   */
+  repelSpoils: true,
+  /**
    * The most gold one order may carry. This is what makes a usurpation a
    * conspiracy: no purse alone can outreach the crown, so the throne has to be
    * bought with somebody else's sword.

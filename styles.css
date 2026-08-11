@@ -527,3 +527,21 @@ button.title-slot { font: inherit; text-align: center; cursor: pointer; }
   font-size: 0.66rem; font-style: italic; color: var(--ink-dim);
   padding: 2px 6px; border-left: 2px solid var(--gold); opacity: 0.9;
 }
+
+/* ---- status chips: army, tokens ------------------------------------------ */
+.status-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.status-chip {
+  font-size: 0.66rem; padding: 2px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-dim);
+}
+.status-chip:hover { border-color: var(--gold); color: var(--ink); }
+.status-chip.away { border-color: #8a4141; color: #e0a0a0; }
+.status-chip.home { border-color: #4f6a8a; color: #9dbbd9; }
+.status-chip.token { border-color: var(--gold-dim); color: var(--gold); }
+
+.peek-find {
+  border: 1px solid var(--gold-dim); border-radius: 8px; padding: 10px 12px; margin: 8px 0;
+  background: rgba(216, 163, 58, 0.06);
+}
+.peek-find h4 { margin: 0 0 4px; color: var(--gold); }
+.peek-find p { margin: 0; font-size: 0.82rem; color: var(--ink-dim); }
