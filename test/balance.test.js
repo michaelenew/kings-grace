@@ -50,11 +50,16 @@ test('no strategy is dead and none is a lock', async () => {
   }
 });
 
-// KNOWN GAP, and the most important open problem in the game. Marshal and
-// Herald are worth well over twice the baseline while Chancellor and Spymaster
-// are worth about half. The grant at +2 is not a choice, it is a formality.
-// This guard only catches a *further* slide; the real fix is new title text.
-test('the combat titles have not run further away', async () => {
+// This measures a CORRELATION and should be read as one: titles are granted at
+// +2 and +3, so the houses holding them are by definition the ones already
+// climbing. It cannot separate "the title won the game" from "winning the game
+// got you the title". tools/title-value.js runs the causal version — gift one
+// title at setup, compare against the identical game without it — and finds a
+// much smaller effect: Marshal +11.8 points on a 26.5% baseline, Herald +7.2,
+// Warden +6.5, and the rest between 0 and +2.
+//
+// Kept as a cheap regression guard on the correlational number only.
+test('no title correlates with winning to an absurd degree', async () => {
   const { summary } = await at(4);
   for (const t of summary.titleRates) {
     assert.ok(t.edge < 3.2, `${t.name} holders win ${t.edge.toFixed(2)}x the baseline`);

@@ -52,6 +52,7 @@ node tools/simulate.js -n 2000                 # four players, in detail
 node tools/simulate.js --counts                # every table size, side by side
 node tools/simulate.js --sweep crownBase=4,6,8
 node tools/simulate.js --search --grid 'commitCap=5|6|7,levyCost=3|4|5'
+node tools/title-value.js -n 600                # causal value of each title
 ```
 
 It scores each configuration against a target profile — both roads live, no
@@ -76,27 +77,39 @@ larger and the matchup is closer to rock-paper-scissors — two-handed play is t
 roughest configuration and honestly always will be, since a game about
 conspiracy has nobody to conspire with.
 
-### The three findings worth keeping
+### What the measurements say, and what they cannot
 
-**The crown's strength is the single most important number, and it cuts both
-ways.** Too weak and the game is nothing but coups; too strong and the coup
-stops being a check on the leader. That matters because *nothing in the game
-lowers a rival's fealty* — attacking a favorite costs you two standing and
-leaves theirs untouched, so a runaway heir can only be out-petitioned or
-deposed. At an offset of 8 the Herald's holder won 1.76× their share of games,
-because the first player to +3 could not be reached and then won every tie
-forever. At the shipped offset that falls to about 1.4×.
+**A title is worth less than it looks.** Saying "Herald holders win 2.1× the
+baseline" measures a correlation: titles are granted at +2 and +3, so their
+holders are the houses already climbing. `tools/title-value.js` runs the causal
+version — gift one title at setup, play the identical game with the same seed
+and the same bots, compare — and the effect is far smaller and far flatter:
 
-**Crown strength has to scale with the table, downward.** A flat offset produced
-81% coups at two players and 45% at six. More players means more nobles free to
-throw gold behind the throne, so a big table defends the crown for you.
+| | Marshal | Herald | Warden | Chancellor | Spymaster | Steward |
+|---|---|---|---|---|---|---|
+| Win rate over a 26.5% baseline | +11.8pt | +7.2pt | +6.5pt | +2.0pt | +1.3pt | −0.2pt |
 
-**Marshal and Herald are worth about 1.4× the baseline; Warden, Spymaster and
-Chancellor are worth less than 1.0×.** Combat resolves on very small integers,
-so "+1 attack" and "win every tie" beat "+1 gold a round" or "−1 tax" by a wide
-margin, and raising the weak titles' numbers barely moved it. The grant at +2 is
-not yet a real choice. Fixing it needs new title text, not a different constant,
-so it is written up in RULES.md Appendix B rather than papered over here.
+**Titles almost never change hands: 0.06 steals per game.** You can only take a
+title from a house whose walls were down, meaning one that attacked this round,
+and title-holders are favorites who rarely attack. So the counterweight the
+design intends — an advantage becomes your opponent's the moment it is stolen,
+and defending it costs you the land and gold you were not building — is
+currently unreachable. That is the thing worth fixing, not the titles' numbers.
+
+**Being a favorite ought to be dangerous, and against these bots it is not.**
+Favor pays every favorite, which makes climbing lucrative, and the bots let it
+happen: they do not gang up on whoever is getting fat under the crown. At a real
+table two or three houses would take that land off you every round, and the
+jealousy of the court is supposed to make the favorite band as risky as the
+outlaw band — the same mechanic pointing the other way. Read the climbing lane's
+win rate with that in mind; it is measuring a table that does not retaliate.
+
+**Crown strength is the single most important number.** Too weak and the game is
+nothing but coups; too strong and the coup stops being a check on the leader,
+which matters because nothing in the game lowers a rival's fealty. It is flat,
+because growing it with the table shut usurpation down to 1% at five and six
+players — a bigger table already supplies more houses who might rally to the
+throne.
 
 ### Three bugs the tournaments found
 
@@ -119,12 +132,19 @@ back with exactly one entry.
 
 ### What the numbers do not cover
 
-Bots only use Support to shield the throne or to honour a bargain, so
-support-between-houses is under-represented in every table above. And the outlaw
-band's payoff is *information* — a peek at a sealed order, a change of orders
-you can sell — which a heuristic bot converts far worse than a person does. The
-shadow strategy's 23% is the weakest of the five at four players, and some of
-that gap is the measuring instrument rather than the game.
+The bots cannot bargain, never bluff, and do not gang up. Support between houses
+is under-represented because they only ever use it to shield the throne or
+honour a deal. The outlaw band's payoff is *information* — a peek at a sealed
+order, a turncoat token you can sell — which a scoring function converts far
+worse than a person does. Nobody punishes a runaway favorite. And an advantage
+is only worth what you can do with it, which is precisely the part a blunt
+instrument cannot measure.
+
+That is what `tools/agent-harness.js` is for: it puts agents in the seats, each
+with the rules, a strategy nudge and a briefing of what that seat is entitled to
+see, answering through the same engine the app runs on so they cannot make an
+illegal move. The heuristic bots stay as a regression instrument — a thousand
+games a second for crashes, seat fairness and dead lanes — not as a balance one.
 
 ## Layout
 

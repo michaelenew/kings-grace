@@ -342,7 +342,14 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
 
   function chooseSpoils(request, view) {
     const loser = view.players.find((p) => p.id === request.loser);
-    const worth = { herald: 6, marshal: 5, steward: 4 + view.deckCount * 0.4, warden: 4, spymaster: 3, chancellor: 3 };
+    // Weighted by what a title is actually worth, measured causally in
+    // tools/title-value.js rather than by how often title-holders win. The old
+    // numbers here were low enough that a bot took land essentially every time
+    // and titles were stolen 0.06 times a game, which left the whole
+    // steal-it-back dynamic untested.
+    const worth = {
+      marshal: 12, herald: 9, warden: 8, chancellor: 5, spymaster: 5, steward: 4 + view.deckCount * 0.3,
+    };
     const bestTitle = request.titles.slice().sort((a, b) => (worth[b] || 3) - (worth[a] || 3))[0];
     const landWorth = 1.4 + 0.75 * view.deckCount * (view.tuning?.landIncome ?? 1);
     if (request.landsAvailable === false || (worth[bestTitle] || 3) > landWorth) {

@@ -222,17 +222,25 @@ to stay live.
 coups and six-handed games 45%, because a large table has more players free to
 shield the throne. Hence `(10 − players)`.
 
-**The open problem: the combat titles decide the game.** Marshal is worth about
-2.4× the baseline and Herald about 2.1×, while Chancellor and Spymaster are
-worth roughly half. Combat resolves on very small integers, so "+1 attack" and
-"win every tie" beat "+1 gold a round" or "−1 tax" by a wide margin. Worse, this
-is now the main engine of imbalance: the climbing lane takes about half of all
-four-player games and takes them *by force*, roughly fifteen coups for every
-inheritance — because climbing is simply the road to Marshal and Herald.
+**On the titles.** An earlier note here claimed Marshal and Herald were worth
+2.4× and 2.1× the baseline. That was a correlation and it was misleading:
+titles are granted at +2 and +3, so their holders are by definition the houses
+already climbing. `tools/title-value.js` runs the causal experiment instead —
+gift one title at setup, play the identical game, compare — and the picture is
+much flatter:
 
-Every constant available has been tried against it and none of them move it.
-Fixing it needs new text for Warden, Steward, Spymaster and Chancellor so that
-they are worth as much in their own way as +1 in a fight — and it needs a better
-instrument to measure with, because the heuristic bots cannot bargain and this
-game is decided at the deal table. `tools/agent-harness.js` puts agents in the
-seats for exactly that next pass.
+| | Marshal | Herald | Warden | Chancellor | Spymaster | Steward |
+|---|---|---|---|---|---|---|
+| Win rate above a 26.5% baseline | +11.8pt | +7.2pt | +6.5pt | +2.0pt | +1.3pt | −0.2pt |
+
+Marshal is genuinely the best of them and Steward genuinely the weakest, but
+nothing here is broken, and Warden turns out to be worth nearly as much as
+Herald rather than nothing at all.
+
+**The real open problem is that titles almost never change hands: 0.06 steals
+per game.** §5 only lets you take a title from a house whose walls were down —
+that is, one that attacked this round — and the houses holding titles are
+favorites, who rarely attack. So the whole counterweight the design intends,
+where an advantage becomes your opponent's the moment it is stolen and
+defending it costs you the land and gold you were not building, is currently
+unreachable. That is worth fixing before touching any title's text.

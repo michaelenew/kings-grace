@@ -768,3 +768,58 @@ test('deals shut once the orders are resolving', async () => {
   assert.equal(res.settled, false);
   assert.match(res.reason, /already resolving/);
 });
+
+// ------------------------------------------------- precedence at court (§5)
+
+test('equal attacks land in order of standing, then land, then wealth', async () => {
+  const g = makeGame({ controllers: { p1: { spoils: { kind: 'land' } }, p2: { spoils: { kind: 'land' } }, p3: { spoils: { kind: 'land' } } } });
+  // Three identical attacks on p0, who holds exactly two lands to lose.
+  set(g.state, 'p0', { lands: 2, fealty: 0 });
+  set(g.state, 'p1', { gold: 10, fealty: 1, lands: 3 }); // highest standing
+  set(g.state, 'p2', { gold: 10, fealty: 0, lands: 5 }); // most land of the rest
+  set(g.state, 'p3', { gold: 10, fealty: 0, lands: 3 }); // last in line
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+    p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+    p3: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').lands, 0, 'both lands were taken');
+  assert.equal(get(g.state, 'p1').lands, 4, 'the highest standing struck first');
+  assert.equal(get(g.state, 'p2').lands, 6, 'then the greatest landholder');
+  assert.equal(get(g.state, 'p3').lands, 3, 'and the last found nothing left');
+});
+
+test('the Herald goes first regardless of standing', async () => {
+  const g = makeGame();
+  set(g.state, 'p0', { lands: 1, fealty: 0 });
+  // Equal strength on both sides: p1 is only at +1, so no punching-down bonus.
+  set(g.state, 'p1', { gold: 10, fealty: 1, lands: 5 });
+  set(g.state, 'p2', { gold: 10, fealty: -1, lands: 1, titles: ['herald'] });
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+    p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p2').lands, 2, 'the Herald took the only land');
+  assert.equal(get(g.state, 'p1').lands, 5, 'the higher standing got there second');
+});
+
+test('precedence decides the last land in the pool', async () => {
+  const g = makeGame();
+  g.state.neutralPool = 1;
+  set(g.state, 'p0', { fealty: 0, lands: 3, gold: 9 });
+  set(g.state, 'p1', { fealty: 2, lands: 3, gold: 9, titleGrants: { 2: true, 3: true } });
+  fillOrders(g, {
+    p0: { order: ORDER.DEVELOP },
+    p1: { order: ORDER.DEVELOP },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').lands, 4, 'the higher standing settles it');
+  assert.equal(get(g.state, 'p0').lands, 3);
+});

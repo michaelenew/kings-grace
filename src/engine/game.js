@@ -18,17 +18,28 @@ import {
 const seatOrder = (state) => state.players.slice().sort((a, b) => a.seat - b.seat);
 
 /**
- * Seat order is fine for bookkeeping, but it must never decide who gets
- * something scarce. Simultaneous claims — a title two players both just
- * qualified for, the last land in the pool — are shuffled, with the Herald
- * first if it is in play, because "lowest seat wins" is a standing advantage
- * for whoever sits down first.
+ * Precedence at court, used wherever two houses want the same thing at the same
+ * moment: the last land in the pool, a title two of them just qualified for, or
+ * the order two attacks land on one defender.
+ *
+ * The Herald first, because that is what the Herald is for. Then standing, then
+ * land, then wealth — the court defers to whoever the court thinks is
+ * important, which is the same order the throne itself is inherited in. Only
+ * when houses are indistinguishable on all three does it come down to a coin,
+ * and the coin is drawn once per house rather than inside the comparison, so
+ * the sort stays consistent.
  */
-function contested(state, players) {
-  const shuffled = state.rng.shuffle(players);
-  const herald = shuffled.findIndex((p) => hasTitle(p, 'herald'));
-  if (herald > 0) shuffled.unshift(...shuffled.splice(herald, 1));
-  return shuffled;
+function precedence(state, players) {
+  const coin = new Map(players.map((p) => [p.id, state.rng()]));
+  return players.slice().sort((a, b) => {
+    const ah = hasTitle(a, 'herald') ? 1 : 0;
+    const bh = hasTitle(b, 'herald') ? 1 : 0;
+    if (ah !== bh) return bh - ah;
+    if (a.fealty !== b.fealty) return b.fealty - a.fealty;
+    if (a.lands !== b.lands) return b.lands - a.lands;
+    if (a.gold !== b.gold) return b.gold - a.gold;
+    return coin.get(a.id) - coin.get(b.id);
+  });
 }
 
 export class Game {
@@ -662,7 +673,6 @@ export class Game {
         attacker: p.id,
         target: c.target,
         strength: this.attackStrength(p.id, support, false, bands, fealtyNow),
-        tiebreak: s.rng(),
       }));
     if (attacks.length === 0) return;
 
@@ -677,14 +687,12 @@ export class Game {
       const defender = this.player(targetId);
       this.emit('combat', `${defender.name} defends with ${def}${wallsDown ? ' (walls down — their army is in the field)' : ''}.`);
 
-      // Descending attack strength; Herald wins ordering ties, then rng.
-      list.sort((a, b) => {
-        if (b.strength !== a.strength) return b.strength - a.strength;
-        const ah = hasTitle(this.player(a.attacker), 'herald') ? 1 : 0;
-        const bh = hasTitle(this.player(b.attacker), 'herald') ? 1 : 0;
-        if (ah !== bh) return bh - ah;
-        return a.tiebreak - b.tiebreak;
-      });
+      // Descending attack strength; equal strength is settled by precedence at
+      // court, so who strikes first is a fact about the table rather than a
+      // die roll.
+      const rank = new Map(precedence(s, list.map((a) => this.player(a.attacker)))
+        .map((p, i) => [p.id, i]));
+      list.sort((a, b) => (b.strength - a.strength) || (rank.get(a.attacker) - rank.get(b.attacker)));
 
       for (const a of list) {
         const attacker = this.player(a.attacker);
@@ -747,7 +755,7 @@ export class Game {
     const s = this.state;
     const developers = seatOrder(s).filter((p) => s.commitments[p.id]?.order === ORDER.DEVELOP);
     if (developers.length === 0) return;
-    for (const p of contested(s, developers)) {
+    for (const p of precedence(s, developers)) {
       if (s.neutralPool <= 0) {
         p.gold += s.tuning.developCost; // nothing left to buy; the purse comes home
         this.emit('develop', `${p.name} finds no unclaimed land left to settle; the ${s.tuning.developCost} gold is returned.`);
@@ -788,7 +796,7 @@ export class Game {
     const s = this.state;
     const claimants = seatOrder(s).filter((p) => (p.fealty >= 2 && !p.titleGrants[2]) || (p.fealty >= 3 && !p.titleGrants[3]));
     if (claimants.length === 0) return;
-    for (const p of contested(s, claimants)) {
+    for (const p of precedence(s, claimants)) {
       for (const threshold of [2, 3]) {
         if (p.fealty < threshold || p.titleGrants[threshold]) continue;
         const available = unclaimedTitles(s);
