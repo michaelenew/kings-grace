@@ -73,16 +73,18 @@ test('fealty bands', () => {
 
 test('tax charges by band, Chancellor pays 1 less, and nobody pays what they lack', () => {
   const g = makeGame();
-  set(g.state, 'p0', { fealty: 2, gold: 10 }); // favorite: 1
-  set(g.state, 'p1', { fealty: 0, gold: 10 }); // neutral: 2
-  set(g.state, 'p2', { fealty: -3, gold: 10, titles: ['chancellor'] }); // outlaw 3, less 1
-  set(g.state, 'p3', { fealty: -2, gold: 1 }); // outlaw 3, only has 1
+  const { favorite, neutral, outlaw } = g.state.tuning.taxByBand;
+  const relief = g.state.tuning.chancellorRelief;
+  set(g.state, 'p0', { fealty: 2, gold: 20 }); // favorite
+  set(g.state, 'p1', { fealty: 0, gold: 20 }); // neutral
+  set(g.state, 'p2', { fealty: -3, gold: 20, titles: ['chancellor'] }); // outlaw, less relief
+  set(g.state, 'p3', { fealty: -2, gold: 1 }); // outlaw, but only has 1
   g.resolveTax();
-  assert.equal(get(g.state, 'p0').gold, 9);
-  assert.equal(get(g.state, 'p1').gold, 8);
-  assert.equal(get(g.state, 'p2').gold, 8);
-  assert.equal(get(g.state, 'p3').gold, 0);
-  assert.equal(g.state.crownGold, 1 + 2 + 2 + 1);
+  assert.equal(get(g.state, 'p0').gold, 20 - favorite);
+  assert.equal(get(g.state, 'p1').gold, 20 - neutral);
+  assert.equal(get(g.state, 'p2').gold, 20 - (outlaw - relief));
+  assert.equal(get(g.state, 'p3').gold, 0, 'you cannot pay what you do not have');
+  assert.equal(g.state.crownGold, favorite + neutral + (outlaw - relief) + 1);
 });
 
 test('levy: serve and lose your army for the round, or refuse and lose standing', async () => {

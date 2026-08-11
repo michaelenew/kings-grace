@@ -65,7 +65,10 @@ function positionScore(p, view, traits, doctrine = {}) {
   s += p.gold * 0.55 * traits.greed;
   s += p.lands * (1.4 + 0.75 * remaining * income);
   s += p.fealty * (3 + 20 * lateness); // the inheritance clock
-  s += p.titles.length * 4;
+  // Not a flat rate per coronet: a Marshal and a Spymaster are not the same
+  // prize, and now that titles change hands the difference decides whether one
+  // is worth going after.
+  s += p.titles.reduce((a, id) => a + TITLE_WORTH(id, view) * 0.45, 0);
   if (band === BAND.NEUTRAL) s += 0.5 * remaining * (view.tuning?.neutralIncome ?? 1);
   if (band === BAND.FAVORITE) s += 1.5;
   if (band === BAND.OUTLAW) s += 2 * traits.treachery;
@@ -85,7 +88,11 @@ const withChanges = (p, changes) => ({ ...p, titles: p.titles.slice(), ...change
 function estimateDefense(target, view) {
   // Walls are usually up, but roughly a third of the table has its army out.
   const walls = view.tuning?.walls ?? 2;
-  let d = walls * 0.7;
+  // Unless we know it is: the levy resolves before orders are sealed, so a
+  // house that answered it is publicly undefended. The bots used to miss this
+  // entirely and went on estimating walls at a house with no gate, which is
+  // most of why the levy opened a window nobody climbed through.
+  let d = target.noArmy ? 0 : walls * 0.7;
   if (has(target, 'warden')) d += view.tuning?.wardenBonus ?? 1;
   return d;
 }
@@ -187,9 +194,17 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           const strength = spend + marshal + punchDown;
           const pWin = winChance(strength, estDef);
           const fealtyDelta = t.attackFealty[bandOf(target.fealty)];
+          // A house with its gate open can be stripped of a coronet, not just a
+          // field. Valuing every raid at one land was why the richest, most
+          // decorated house on the board looked no more worth hitting than a
+          // pauper — and it is the decorated ones the levy exposes.
+          const coronet = target.noArmy
+            ? target.titles.slice().sort((a, b) => TITLE_WORTH(b, view) - TITLE_WORTH(a, view))[0]
+            : null;
           const win = withChanges(me, {
             gold: me.gold - spend,
-            lands: me.lands + (target.lands > 0 ? 1 : 0),
+            lands: me.lands + (target.lands > 0 && !coronet ? 1 : 0),
+            titles: coronet ? [...me.titles, coronet] : me.titles,
             fealty: clampFealty(me.fealty + fealtyDelta),
           });
           const lose = withChanges(me, {

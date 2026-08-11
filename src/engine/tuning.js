@@ -11,7 +11,12 @@ export const PLAYER_MAX = 6;
 export const RULES = {
   // ---- Setup ----------------------------------------------------------
   startLands: 3,
-  startGold: 6,
+  /**
+   * Eight, not six, because the first flip can be a Tax and an outlaw owes 8.
+   * At six, a Tax on round one left a third of the table unable to afford any
+   * order at all — the first decision of the game was "you have no decision".
+   */
+  startGold: 8,
   startFealty: 0,
   /** Unclaimed land is dealt per player, so Develop stays live at any count. */
   neutralPerPlayer: 2,
@@ -58,7 +63,14 @@ export const RULES = {
   developCost: 3,
 
   // ---- Crown deck -----------------------------------------------------
-  taxByBand: { favorite: 1, neutral: 2, outlaw: 3 },
+  /**
+   * The Crown's only real drain on the table. It has to be heavy, because
+   * nothing else takes gold out: the levy asks for troops, land runs out
+   * halfway through, and a house at +3 has nothing left to appeal for. Left
+   * light, purses climbed past 25 by the end and the game turned into everyone
+   * sitting on a war chest nobody dared spend.
+   */
+  taxByBand: { favorite: 6, neutral: 7, outlaw: 8 },
   chancellorRelief: 1,
   /**
    * The levy asks for your host, not your purse. Answer it and your army

@@ -56,8 +56,9 @@ flavours — so a doctrine's win rate answers "is this line viable?".
 node tools/simulate.js -n 2000                 # four players, in detail
 node tools/simulate.js --counts                # every table size, side by side
 node tools/simulate.js --sweep crownBase=4,6,8
-node tools/simulate.js --search --grid 'commitCap=5|6|7,levyCost=3|4|5'
+node tools/simulate.js --search --grid 'commitCap=5|6|7,tax=3|4|5'
 node tools/title-value.js -n 600                # causal value of each title
+node tools/order-diary.js -n 300                # what each round looks like inside
 ```
 
 It scores each configuration against a target profile — both roads live, no
@@ -70,10 +71,10 @@ Where it lands, across 600 games per table size:
 
 | Players | Ends in usurpation | Mean ending round (of 12) | Battles/game |
 |---|---|---|---|
-| 3 | 28% | 11.8 | 3.3 |
-| 4 | 39% | 11.7 | 4.3 |
-| 5 | 31% | 11.6 | 5.2 |
-| 6 | 28% | 11.7 | 5.8 |
+| 3 | 40% | 11.6 | 4.3 |
+| 4 | 22% | 11.8 | 5.8 |
+| 5 | 20% | 11.8 | 7.0 |
+| 6 | 17% | 11.8 | 8.2 |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
 size. Both roads to the throne stay open at every table size, which is the
@@ -118,6 +119,14 @@ jealousy of the court is supposed to make the favorite band as risky as the
 outlaw band — the same mechanic pointing the other way. Read the climbing lane's
 win rate with that in mind; it is measuring a table that does not retaliate.
 
+**The back half of the game has nothing to buy.** The unclaimed land is gone by
+round 8, appeals stop at +3, and what is left is Support — which costs nothing
+but coin, never costs standing, and cannot lose. It takes 56% of every turn from
+round 8 onward, against 7% before. Gold piles up because there is nowhere for it
+to go, and the Tax ladder at 6/7/8 is holding the line rather than solving it.
+`tools/order-diary.js` prints the shape; RULES.md Appendix B has the sweeps that
+rule out the other explanations.
+
 **Crown strength is the single most important number.** Too weak and the game is
 nothing but coups; too strong and the coup stops being a check on the leader,
 which matters because nothing in the game lowers a rival's fealty. It is flat,
@@ -148,6 +157,15 @@ back with exactly one entry.
 *Everyone could read the next royal card.* The peeked-card field fell back to
 the real top of the deck once orders were revealed, so an outlaw's peek leaked
 to the whole table every round.
+
+*The bots could not see an open gate.* `estimateDefense` assumed walls were up
+at 70% everywhere, so a house that had answered the Crown's levy — publicly
+undefended, before anyone sealed an order — looked exactly as hard to crack as
+one behind its walls. That is most of why the levy opened a window nobody
+climbed through. They also valued winning a battle at "one land" flat, so the
+richest, most decorated house on the board scored no better as a target than a
+pauper, and `positionScore` priced every coronet the same whether it was the
+Marshal or the Spymaster.
 
 *The starvation metric counted the wrong thing.* It flagged any turn offering
 two orders or fewer, so once the levy started taking the Attack order away it
@@ -190,7 +208,7 @@ src/engine/         the rules; knows nothing about the DOM
   rng.js            seeded PRNG, so any game can be replayed
 src/ui/             the browser client
 tools/              tournament core, the CLI over it, the causal title test,
-                    and the agent harness
+                    the per-round order diary, and the agent harness
 test/               rules, bot and balance suites
 ```
 

@@ -17,7 +17,7 @@ is in Appendix B.
 |---|---|
 | Players | 3–6 |
 | Starting lands per player | 3 |
-| Starting gold per player | 6 |
+| Starting gold per player | 8 |
 | Starting fealty per player | 0 |
 | Neutral land pool | 2 per player |
 | Crown deck | 12 cards (composition in §6) |
@@ -139,7 +139,7 @@ Resolved immediately on flip:
 
 | Card | Count | Effect |
 |---|---|---|
-| **Tax** | 4 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
+| **Tax** | 4 | Favorites pay 6, neutrals pay 7, outlaws pay 8 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
 | **Levy** | 4 | The Crown calls up your host. **Serve** — your army marches, so you have **no walls and no Attack order this round** — or **refuse** and drop **2 fealty**. |
 | **Favor** | 4 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
 
@@ -282,9 +282,57 @@ attacking a favorite costs 2 fealty and a bot will not pay that to rob a house
 it is not already fighting. The claim mechanic is doing all the work. Whether a
 real table behaves the same way is exactly the question the bots cannot answer.
 
-**The levy change cost the game its main gold sink.** Levies used to pull 4 gold
-per house out of play on a third of the deck. They now pull none, and mean gold
-at the end of a four-handed game rose from 17.6 to 26.9. Nothing measured is
-obviously broken by it — nobody is priced out of their turn, and coups did not
-run away — but gold is a looser constraint than it was, and if it wants
-tightening, Tax is the lever.
+**The levy change cost the game its main gold sink, and the Tax had to take it
+over.** Levies used to pull 4 gold per house out of play on a third of the deck
+and now pull none, so mean gold at the end of a four-handed game climbed to 26.9.
+The Tax ladder went from 1/2/3 to **6/7/8** to answer it, and starting gold from
+6 to 8 — because at 6, a Tax on the very first flip left a third of the table
+unable to afford any order at all, which is not a first turn anybody should have.
+That lands mean end gold at 15.8.
+
+The whole curve, 600 four-player games at each rung, because the trade is worth
+seeing rather than being told:
+
+| Tax ladder | Gold left at the end | Battles/game | Turns you can afford nothing |
+|---|---|---|---|
+| 1/2/3 | 27.0 | 4.4 | 0% |
+| 3/4/5 | 21.2 | 5.3 | 3% |
+| 4/5/6 | 18.7 | 6.2 | 5% |
+| **6/7/8** (in play) | **15.8** | **5.8** | **9%** |
+
+Taxing harder buys battles up to a point and then starts taking them away, for
+the obvious reason: past a certain weight, nobody can afford to fight either.
+
+### Why there are not more battles
+
+`tools/order-diary.js` prints the order mix round by round against the unclaimed
+land remaining. Rounds 1–7, while there is still land to settle: develop 21%,
+appeal 38%, attack 17%, **support 7%**. From round 8, when the pool is dry:
+develop 0%, appeal 21%, attack 13%, **support 56%**. And from round 9 on, most
+attack orders point at the **Crown** rather than at a neighbour.
+
+So the turns freed up when the building stops do not go into currying favour —
+appeals actually fall. They go into **Support**, which is the one order that
+costs nothing but coin, never costs standing, and cannot lose. The late game is
+a coup standoff with everybody's gold pledged behind the throne or behind a
+claimant, and no raiding at all.
+
+Three things it is *not*, each ruled out by a sweep rather than by argument:
+
+- **Not the cost of striking a favorite.** Taking `attackFealty.favorite` from
+  −2 to 0 moves battles from 5.1 to 5.2. Nobody is being deterred by it.
+- **Not the bots' fear of exposure.** Cutting their walls-down penalty by five
+  moves battles from 5.1 to 5.7.
+- **It is the price of the alternative.** An appeal is 2 gold for a guaranteed
+  step toward the win condition; a raid is 3+ gold, a real chance of nothing,
+  and a field worth about a gold a round. Raise the appeal and the swords come
+  straight out: at 3 gold battles go to 5.9, at 4 with a 5-gold pardon they go to
+  **8.1**, sword-taken coronets go from 0.03 a game to 0.54, the two roads to the
+  throne split 43/57, and mean end gold lands on 11.
+
+That last configuration hits every number one could ask for and is **not** in
+play, because it also puts 19% of turns on Hold and 26% out of reach of any
+order but attack-or-support. Making the swords come out by pricing people out of
+everything else is not the same as making the game want a fight. The honest fix
+is a sink that stays open in the back half — the land runs out at round 8 and
+nothing replaces it — rather than a tax squeeze.
