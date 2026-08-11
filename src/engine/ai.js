@@ -12,11 +12,17 @@
 import { BAND, CROWN, FEALTY_MAX, ORDER, TITLES, bandOf, clampFealty } from './constants.js';
 import { emptyGoods } from './deals.js';
 
+// `credulity` is the trust tolerance: how much of somebody else's word a house
+// is willing to act on, before any ledger. It runs from a loyalist who takes
+// people at face value to a wolf who assumes everyone is lying — and it is a
+// separate dial from `treachery`, which is how much a house's *own* word is
+// worth. The two together are what make a table interesting: a credulous
+// traitor and a suspicious honest broker are both playable characters.
 const TRAITS = {
-  loyalist: { aggression: 0.55, greed: 0.9, treachery: 0.3, nerve: 0.7, crownLove: 1.6 },
-  merchant: { aggression: 0.7, greed: 1.5, treachery: 0.5, nerve: 0.8, crownLove: 1.0 },
-  schemer: { aggression: 1.0, greed: 1.0, treachery: 1.0, nerve: 1.2, crownLove: 0.7 },
-  wolf: { aggression: 1.5, greed: 0.85, treachery: 1.3, nerve: 1.45, crownLove: 0.4 },
+  loyalist: { aggression: 0.55, greed: 0.9, treachery: 0.3, nerve: 0.7, crownLove: 1.6, credulity: 0.85 },
+  merchant: { aggression: 0.7, greed: 1.5, treachery: 0.5, nerve: 0.8, crownLove: 1.0, credulity: 0.6 },
+  schemer: { aggression: 1.0, greed: 1.0, treachery: 1.0, nerve: 1.2, crownLove: 0.7, credulity: 0.45 },
+  wolf: { aggression: 1.5, greed: 0.85, treachery: 1.3, nerve: 1.45, crownLove: 0.4, credulity: 0.2 },
 };
 
 /** How hard a doctrine pulls a bot toward its lane, in score points. */
@@ -105,8 +111,37 @@ function pactFor(view, me) {
   return view.pacts?.[me.id] || null;
 }
 
+/**
+ * How much of `them`'s word this house is prepared to act on: 0 is "they are
+ * certainly lying", 1 is "I would leave the gate open for them". Credulity sets
+ * the ceiling and the ledger moves you within it, so a wolf who trusts you
+ * completely still believes you less than a loyalist who barely knows you.
+ */
+function believes(view, traits, them) {
+  const t = view.trust?.[`${view.me}>${them}`] ?? 0;
+  return clamp((traits.credulity ?? 0.5) * (0.5 + t / 6), 0, 1);
+}
+
+/** What this house thinks of me, which is what decides who will work with me. */
+function standingWith(view, them) {
+  return view.trust?.[`${them}>${view.me}`] ?? 0;
+}
+
+/** Undertakings other houses have given me this round, weighted by belief. */
+function wordGivenTo(view, traits, pid) {
+  const out = { standDown: new Set(), coup: 0, support: 0 };
+  for (const promise of view.promises || []) {
+    if (promise.round !== view.round || promise.to !== pid) continue;
+    const weight = believes(view, traits, promise.from);
+    if (promise.kind === 'standDown' && weight > 0.4) out.standDown.add(promise.from);
+    if (promise.kind === 'joinCoup') out.coup += weight;
+    if (promise.kind === 'supportAttack' || promise.kind === 'supportDefense') out.support += weight;
+  }
+  return out;
+}
+
 /** What other houses have promised me this round. Promises, not guarantees. */
-function pledgesTo(view, pid) {
+function pledgesTo(view, pid, traits) {
   let support = 0;
   let rivals = 0;
   for (const [who, pact] of Object.entries(view.pacts || {})) {
@@ -114,7 +149,8 @@ function pledgesTo(view, pid) {
     if (pact.kind === 'supportAttack' || pact.kind === 'supportDefense') support += pact.expected || 0;
     if (pact.kind === 'joinCoup') rivals += pact.expected || 0;
   }
-  return { support, rivals };
+  const word = wordGivenTo(view, traits, pid);
+  return { support: support + word.support * 2, rivals: rivals + word.coup * 2, standDown: word.standDown };
 }
 
 /**
@@ -139,6 +175,12 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     const base = positionScore(me, view, traits, doctrine);
     const candidates = [];
     const pact = pactFor(view, me);
+    // Who I have dealt with lately, and who has given me their word this round.
+    const partners = new Set((view.deals || [])
+      .filter((d) => view.round - d.round < 2)
+      .flatMap((d) => [...Object.keys(d.offers || {}), ...Object.keys(d.takes || {})])
+      .filter((x) => x !== me.id));
+    const myWord = wordGivenTo(view, traits, me.id);
     const paid = pact ? pact.paid : 0;
     // A promise weighs less once the gold is already in hand: the treacherous
     // discount it hardest, which is where betrayal comes from.
@@ -218,6 +260,13 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           score -= (0.10 + 0.02 * menace) * (1.4 + 0.6 * view.deckCount) / traits.nerve;
           score *= traits.aggression;
           score += pull(doctrine, 'attack');
+          // What it costs to be seen doing it. Striking a house you have just
+          // bargained with is the expensive kind of betrayal — you lose them and
+          // you lose a little of everyone. A house already sure you are a snake
+          // has nothing left to take away, so the treacherous ride cheaper.
+          if (myWord.standDown.has(target.id)) score -= 3.5 * (1 - 0.5 * traits.treachery);
+          if (partners.has(target.id)) score -= 4.5 * (1 - 0.45 * traits.treachery);
+          score -= Math.max(0, standingWith(view, target.id)) * 0.9 * (1 - 0.4 * traits.treachery);
           if (pact && pact.kind === 'attack' && pact.subject === target.id) score += pactPull;
           if (pact && pact.kind === 'standDown' && pact.with === target.id) score -= pactPull;
           candidates.push({ order: ORDER.ATTACK, target: target.id, gold: spend, score, why: `raid ${target.name}` });
@@ -231,7 +280,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       // Support pledged to me joins *my* contribution, so it buys the throne
       // for me. A pledge to march alongside me does not — that ally is a rival
       // for the crown, which is exactly the deterrent §10 describes.
-      const pledged = pledgesTo(view, me.id);
+      const pledged = pledgesTo(view, me.id, traits);
       const allies = (pact && pact.kind === 'joinCoup' ? pact.expected || 0 : 0) + pledged.rivals;
       const spend = ceiling;
       const mine = spend + marshal + pledged.support * 0.7;
@@ -292,6 +341,37 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           gold: spend,
           score: pactPull - spend * 0.6 + pull(doctrine, 'support'),
           why: 'honour a bargain',
+        });
+      }
+      // Hold a wall for somebody you trust. It is the cheapest thing in the
+      // game that buys you a friend, and unlike shielding the throne it makes a
+      // specific house owe you rather than nobody at all.
+      for (const ally of others) {
+        const t2 = standingWith(view, ally.id);
+        const mutual = believes(view, traits, ally.id);
+        if (t2 < 0.5 && mutual < 0.5) continue;
+        const spend = clamp(2, 1, ceiling);
+        candidates.push({
+          order: ORDER.SUPPORT,
+          target: ally.id,
+          gold: spend,
+          score: (t2 + mutual * 2) * 1.1 - spend * 0.55 + pull(doctrine, 'support'),
+          why: `stand with ${ally.name}`,
+        });
+      }
+      // And keep your own word, if you gave it.
+      for (const promise of view.promises || []) {
+        if (promise.round !== view.round || promise.from !== me.id) continue;
+        if (promise.kind !== 'supportAttack' && promise.kind !== 'supportDefense') continue;
+        const spend = clamp(2, 1, ceiling);
+        candidates.push({
+          order: ORDER.SUPPORT,
+          target: promise.to,
+          gold: spend,
+          // Breaking your word costs 2 trust with them and 1 with everybody
+          // else. The treacherous discount that; nobody ignores it.
+          score: 5 * (1 - 0.5 * traits.treachery) - spend * 0.5 + pull(doctrine, 'support'),
+          why: 'keep your word',
         });
       }
     }
@@ -398,6 +478,25 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     return gap > cost * (1.4 / Math.max(0.4, traits.treachery)) ? taken : free;
   }
 
+  /**
+   * How good a bargain has to be before this house will sign it. A stranger
+   * needs to pay a little; somebody who has burned you needs to pay a great
+   * deal, and past a point there is no number that works. That is what "less
+   * likely to work with you" means in practice — the conniving still pays, but
+   * the next deal costs you more than the last one made.
+   */
+  function dealFloor(request, view) {
+    const table = request.table || {};
+    const involved = [...new Set([
+      ...Object.keys(table.offers || {}), ...Object.keys(table.takes || {}),
+    ])].filter((x) => x !== view.me);
+    if (!involved.length) return 0.5;
+    const worst = Math.min(...involved.map((x) => view.trust?.[`${view.me}>${x}`] ?? 0));
+    if (worst <= -2.5) return Infinity; // nothing they can offer
+    // −3 to +3 maps to a floor of about 9 gold down to nothing.
+    return clamp(0.5 - worst * 3 * (1 - (traits.credulity ?? 0.5) * 0.5), 0, 12);
+  }
+
   function chooseSpoils(request, view) {
     const loser = view.players.find((p) => p.id === request.loser);
     const bestTitle = request.titles.slice().sort((a, b) => TITLE_WORTH(b, view) - TITLE_WORTH(a, view))[0];
@@ -451,9 +550,43 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     const marshal = has(me, 'marshal') ? t.marshalBonus : 0;
     const defense = view.crownStrength;
 
-    const offer = (to, gold) => ({
+    const offer = (to, gold, promise = null) => ({
       transfers: [{ from: me.id, to, goods: { ...emptyGoods(), gold } }],
+      promise,
     });
+
+    // Before any of that: is there somebody worth giving my word to?
+    //
+    // A promise is free and binds nobody, which is exactly why it is worth
+    // something — it costs 2 trust with them and 1 with the whole court to
+    // break, so a house that keeps giving its word and keeping it becomes the
+    // one everybody deals with. The honest make the promise because they mean
+    // to keep it; the treacherous make it because it is cheap and they intend
+    // to sell it. Both are playing the game as designed.
+    const word = (() => {
+      // A word given every round to everybody is not worth having. These only
+      // fire when there is something specific to buy with one.
+      const dangerous = others.filter((o) => {
+        const reach = Math.min(o.gold, cap);
+        return reach > t.walls + 2 && o.gold > me.gold * 0.8;
+      });
+      // Somebody who could actually force my gate, and does not yet owe me
+      // anything: buy a quiet round by undertaking to leave them alone.
+      const threat = dangerous.sort((a, b) => b.gold - a.gold)[0];
+      if (threat && standingWith(view, threat.id) < 0.5 && me.lands >= 2 && me.gold < threat.gold) {
+        return { to: threat.id, kind: 'standDown' };
+      }
+      // Or shore up the one house I already deal with, so they hold my wall
+      // when it matters — but only once there is a wall worth holding.
+      const friend = others
+        .filter((o) => believes(view, traits, o.id) > 0.7 && standingWith(view, o.id) > 0.75)
+        .sort((a, b) => standingWith(view, b.id) - standingWith(view, a.id))[0];
+      // Only undertake to hold somebody's wall if holding it is affordable.
+      // Promising what you cannot pay for is how a house talks itself into a
+      // reputation it did not want.
+      if (friend && view.deckCount < 8 && me.gold >= 8) return { to: friend.id, kind: 'supportDefense' };
+      return null;
+    })();
 
     // Can I take the throne if somebody lends me their sword?
     const reachAlone = ceiling + marshal;
@@ -463,7 +596,21 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
         const bribe = clamp(Math.ceil(ally.gold * 0.4), 1, Math.max(1, me.gold - 2));
         const theirSpend = Math.min(ally.gold, cap);
         if (reachAlone - bribe + theirSpend > defense + 1) {
-          if (theirSpend > 0) return offer(ally.id, bribe);
+          if (theirSpend <= 0) continue;
+          // Only give your word to march if you will still be able to: paying
+          // the bribe takes the gold out of your own purse, and a house that
+          // promises a coup it can no longer afford breaks its word by
+          // accident, which the court cannot tell from breaking it on purpose.
+          //
+          // This gate does not move the number much. A coup pact is kept about
+          // one time in ten, and that is not a bug in the arithmetic — it is
+          // the coup logic refusing to march when marching would crown
+          // somebody else, which is the correct read of §10 and the single
+          // most realistic thing the bots do. The promise is worth making
+          // anyway; it is just worth very little to believe.
+          const afterBribe = Math.min(me.gold - bribe, cap) + marshal;
+          const stillMarching = afterBribe > 0 && afterBribe + theirSpend > defense;
+          return offer(ally.id, bribe, stillMarching ? { to: ally.id, kind: 'joinCoup' } : word);
         }
       }
     }
@@ -487,10 +634,11 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       const hireling = others.filter((o) => o.id !== heir.id && o.gold >= 2).sort((a, b) => b.gold - a.gold)[0];
       if (hireling) {
         const gold = clamp(Math.floor(me.gold * 0.3), 1, 5);
-        return offer(hireling.id, gold);
+        return offer(hireling.id, gold, word);
       }
     }
-    return null;
+    // No goods worth moving, but a word costs nothing to give.
+    return word ? { transfers: [], promise: word } : null;
   }
 
   /**
@@ -524,7 +672,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     switch (request.type) {
       case 'proposeDeal': return chooseDeal(request, view);
       case 'deal': return considerDeal(request, view);
-      case 'dealTable': return { accept: request.balance > 0.5 };
+      case 'dealTable': return { accept: request.balance > dealFloor(request, view) };
       case 'order': return chooseOrder(request, view);
       case 'levy': return chooseLevy(request, view);
       case 'title': return chooseTitle(request, view);

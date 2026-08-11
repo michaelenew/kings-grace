@@ -58,6 +58,11 @@ export function referenceCard(tuning, players) {
       el('p', { class: 'ref-line dim' }, 'Set what you offer and what you take on your side of the table. Everything offered has to match everything taken across all houses. It settles the moment every house involved has accepted — and touching any term withdraws every acceptance.'),
       el('p', { class: 'ref-line dim' }, 'Gold, land, titles and turncoat tokens move. Nothing anybody says they will *do* is part of it.'),
     ]),
+
+    block('Your word', [
+      el('p', { class: 'ref-line dim' }, 'You may give another house your word at any time. It is free, it binds nobody, and no bargain waits on it — but it is given in open court, and when the orders turn over everyone sees whether it held.'),
+      el('p', { class: 'ref-line dim' }, 'Keep it and they think better of you. Break it, or put a sword in a house you have just bargained with, and so does everybody else. A house that thinks little of you wants a far better bargain before it signs, and past a point will not deal with you at all. Betrayal is often worth it; it is never free.'),
+    ]),
   ]);
 }
 

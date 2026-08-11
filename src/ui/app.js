@@ -11,7 +11,8 @@ import { Game, describeOrder } from '../engine/game.js';
 import { createGame, crownStrength, commitCeiling } from '../engine/state.js';
 import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
-import { INTENTS } from '../engine/diplomacy.js';
+import { INTENTS, describeIntent } from '../engine/diplomacy.js';
+import { trustLabel } from '../engine/trust.js';
 import { emptyGoods } from '../engine/deals.js';
 import { el, mount, number, select } from './dom.js';
 import { sequenceCard, stageFor } from './sequence.js';
@@ -190,8 +191,13 @@ function resume() {
 // ------------------------------------------------------------------- render
 
 /** A small explain-on-click panel. Hover titles were unreliable; a click is not. */
-export function openPopover(title, text) {
-  app.popover = { title, text };
+export function openPopover(title, text, body = null) {
+  app.popover = { title, text, body };
+  render();
+}
+
+export function closePopover() {
+  app.popover = null;
   render();
 }
 
@@ -252,7 +258,8 @@ function popoverView() {
   }, [
     el('div', { class: 'popover', onclick: (e) => e.stopPropagation() }, [
       el('h4', {}, app.popover.title),
-      el('p', {}, app.popover.text),
+      app.popover.text ? el('p', {}, app.popover.text) : null,
+      app.popover.body ? app.popover.body() : null,
       el('button', { class: 'ghost small', onclick: () => { app.popover = null; render(); } }, 'Close'),
     ]),
   ]);
@@ -444,7 +451,35 @@ function dealTray(s, p) {
       }, accepted ? 'Accepted' : 'Accept') : null,
       involved ? el('button', { class: 'ghost small', onclick: async () => { await app.game.withdrawFromDeal(p.id); render(); } }, 'Withdraw') : null,
     ]) : accepted ? el('span', { class: 'tray-ok' }, 'accepted') : null,
+    mine ? null : giveWordButton(s, p),
   ]);
+}
+
+/**
+ * Give another house your word. It is free, it binds nobody, and no bargain
+ * ever waits on it — which is exactly what makes it worth something, because
+ * breaking it is a thing the whole court can see.
+ */
+function giveWordButton(s, p) {
+  const me = viewingSeat(s);
+  if (!me || !app.game?.dealsOpen) return null;
+  const given = (s.promises || []).find((x) => x.round === s.round && x.from === me.id && x.to === p.id);
+  return el('button', {
+    class: `ghost small${given ? ' on' : ''}`,
+    onclick: () => openPopover(`Your word to ${p.name}`, null, () => el('div', { class: 'choices' }, [
+      ...INTENTS.filter((i) => !i.needsSubject).map((intent) => el('button', {
+        class: `choice${given?.kind === intent.id ? ' chosen' : ''}`,
+        onclick: () => {
+          app.game.declarePromise(me.id, { to: p.id, kind: intent.id });
+          closePopover();
+          render();
+        },
+      }, [
+        el('strong', {}, intent.label),
+        el('span', {}, 'Free, and binding on nobody. Kept, they will think better of you; broken, so will everyone else.'),
+      ])),
+    ])),
+  }, given ? 'Word given' : 'Give your word');
 }
 
 const isEmptyGoods = (g) => !g || (!g.gold && !g.lands && !g.turncoat && !(g.titles || []).length);
@@ -506,12 +541,46 @@ function playerCard(s, p) {
     el('div', { class: 'titles' }, p.titles.length
       ? p.titles.map((t) => el('span', { class: 'title-chip', title: TITLE_BY_ID[t].text }, TITLE_BY_ID[t].name))
       : [el('span', { class: 'title-chip empty' }, 'no titles')]),
+    standingRow(s, p),
     commitment && showOrder
       ? el('div', { class: 'order-line' }, describeOrder(commitment, (id) => nameOf(s, id), s.tuning.pardonCost))
       : commitment
         ? el('div', { class: 'order-line sealed' }, 'orders sealed')
         : null,
   ]);
+}
+
+/**
+ * What this house thinks of you, and what it has said it will do. Trust is
+ * public — a word given in open court is given in open court — so this reads
+ * off the same ledger everyone else is reading.
+ */
+function standingRow(s, p) {
+  const me = viewingSeat(s);
+  if (!me || me.id === p.id) return null;
+  const theirs = s.trust?.[`${p.id}>${me.id}`] ?? 0;
+  const mine = s.trust?.[`${me.id}>${p.id}`] ?? 0;
+  const word = (s.promises || []).find((x) => x.round === s.round && x.from === p.id && x.to === me.id);
+  const rounded = Math.round(theirs * 10) / 10;
+  return el('div', { class: 'standing' }, [
+    el('button', {
+      class: `standing-chip t${theirs > 0.75 ? 'up' : theirs < -0.75 ? 'down' : 'flat'}`,
+      onclick: () => openPopover(`${p.name} on you`, [
+        `They think you are ${trustLabel(theirs)} (${rounded > 0 ? '+' : ''}${rounded}).`,
+        `You think they are ${trustLabel(mine)}.`,
+        'Trust moves on deeds and on words: hold somebody’s wall and they remember it, strike a house you have just bargained with and the whole court remembers that. A house that thinks little of you will want a much better bargain before it signs, and past a point will not deal at all.',
+      ].join('\n\n')),
+    }, trustLabel(theirs)),
+    word ? el('span', { class: 'word-chip' }, `“${describeIntent(s, word)}”`) : null,
+  ]);
+}
+
+/** Whose eyes the board is being drawn through right now. */
+function viewingSeat(s) {
+  const pending = app.pending?.pid;
+  if (pending && app.humanSeats.has(pending)) return s.players.find((p) => p.id === pending);
+  const first = [...app.humanSeats][0];
+  return first ? s.players.find((p) => p.id === first) : null;
 }
 
 function resource(label, value, cls = '') {

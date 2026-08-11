@@ -14,6 +14,10 @@ import {
   commitCeiling, createGame, crownStrength, hasTitle, legalOrders, petitionCostFor,
   claimableTitles, playerById, unclaimedTitles, viewFor,
 } from './state.js';
+import { INTENT_BY_ID, describeIntent } from './diplomacy.js';
+import {
+  decayTrust, makePromise, settleBargain, settleDeeds, settlePromises,
+} from './trust.js';
 
 const seatOrder = (state) => state.players.slice().sort((a, b) => a.seat - b.seat);
 
@@ -114,6 +118,7 @@ export class Game {
         break;
       }
       await this.pause('roundEnd');
+      decayTrust(s);
       s.round += 1;
       this.notify();
     }
@@ -282,6 +287,9 @@ export class Game {
         type: 'proposeDeal',
         others: s.players.filter((x) => x.id !== p.id).map((x) => x.id),
       });
+      if (deal?.promise?.to && deal.promise.kind) {
+        this.declarePromise(p.id, deal.promise);
+      }
       if (!deal || !deal.transfers?.length) continue;
       await this.putDeal({ ...deal, proposer: p.id });
     }
@@ -321,9 +329,30 @@ export class Game {
       this.notify();
       return { settled: false, waiting };
     }
+    // Read the balance before the goods move, then move them, then let the
+    // ledger record who came off well out of it.
+    const table = this.state.dealTable;
+    const worth = Object.fromEntries(dt.dealParticipants(table)
+      .map((x) => [x, dt.balanceFor(this.state, table, x)]));
     const moved = dt.settleTable(this);
+    settleBargain(this.state, { offers: table.offers, takes: table.takes }, (x) => worth[x] ?? 0);
     this.emit('deal', `A bargain settles — ${moved.join('; ')}.`);
     return { settled: true };
+  }
+
+  /**
+   * Declare an undertaking to another house. Free, binding on nobody, and no
+   * bargain ever waits on it — the goods on the table settle regardless. What
+   * it does is put your word on the record, so that keeping it or breaking it
+   * is something the whole court can see when the orders turn over.
+   */
+  declarePromise(pid, { to, kind, subject = null }) {
+    if (!this.dealsOpen) return { ok: false, reason: 'The orders are already resolving.' };
+    if (pid === to) return { ok: false, reason: 'You need somebody to say it to.' };
+    if (!INTENT_BY_ID[kind]) return { ok: false, reason: 'No such undertaking.' };
+    makePromise(this.state, pid, { to, kind, subject });
+    this.emit('promise', `${this.nameOf(pid)} gives ${this.nameOf(to)} their word ${describeIntent(this.state, { kind, subject })}.`);
+    return { ok: true };
   }
 
   /** Bots look at the open pot and accept if it pays them. */
@@ -498,6 +527,12 @@ export class Game {
     // Order matters and is worth stating plainly: standing moves first, so a
     // pardon lands before the swords do; then land is settled; then support is
     // counted; then the attacks resolve against it.
+    // Words and deeds are scored the moment the orders are face up, before any
+    // of them resolve: what the court thinks of you is settled by what you
+    // committed to, not by whether it happened to work.
+    settlePromises(s, (kind, text) => this.emit(kind, text));
+    settleDeeds(s, (kind, text) => this.emit(kind, text));
+
     this.step_develop();
     const support = this.tallySupport();
     await this.step_crownAssault(support);

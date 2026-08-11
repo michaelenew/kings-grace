@@ -164,6 +164,46 @@ table diverges fast.
 
 ---
 
+## 6b. Your word, and what the court thinks
+
+Deals move goods and nothing else: no bargain is ever conditional on anybody's
+promise, and none waits on one. But a game about court politics in which
+betrayal costs nothing is a game about arithmetic, so words and deeds are both
+on the record.
+
+**Giving your word.** At any time while deals are open, a house may declare an
+undertaking to another house — *I will leave you be this round*, *I will
+reinforce your defense*, *I will march on the Crown alongside you*. It is free
+and it binds nobody. When the orders turn over it is checked against what that
+house actually sealed.
+
+**The ledger.** Every house holds an opinion of every other, from −3 to +3,
+starting at nothing. It is public: a word given in open court is given in open
+court. It moves on:
+
+| | Change |
+|---|---|
+| Keeping your word | **+1** with them, **+0.25** with everyone else |
+| Breaking your word | **−2** with them, **−1** with every other house |
+| Striking a house you bargained with this round or last | **−2** with them, **−0.5** with the table |
+| Holding somebody's wall (Support that went to their defense) | **+0.75** with them |
+| Settling a bargain | **+0.4** each way, or nothing for the house that came off badly |
+
+Opinions drift back toward indifference by 0.12 a round. The court has a long
+memory, not an infinite one.
+
+**What it buys.** A house that thinks little of you demands a far better bargain
+before it signs, and below about −2.5 there is no bargain it will take. That is
+the whole cost of conniving: the boost is often worth it, and it is never free.
+
+Bots also carry a **trust tolerance** — how much of anybody's word they will act
+on before the ledger is consulted at all. A loyalist takes people near enough at
+face value; a wolf assumes everyone is lying. It is a separate dial from how
+much their *own* word is worth, which is what makes a credulous traitor and a
+suspicious honest broker both playable.
+
+---
+
 ## 7. Titles (6)
 
 Granted at fealty thresholds (§2). Taken by the sword per §5, or bought out from

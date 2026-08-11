@@ -89,6 +89,8 @@ export function createGame(opts = {}) {
     revealed: false,
     knowledge: {}, // pid -> {orders:{pid:commitment}, topCard: card|null}
     pacts: {}, // pid -> pact honoured this round (diplomacy layer)
+    trust: {}, // "from>to" -> −3..+3, what the court thinks of you
+    promises: [], // undertakings declared, and whether they were kept
     goodwill: {}, // "from>to" -> number, gold gifted so far
     deals: [], // deals struck this game, for the chronicle
     dealTable: { offers: {}, takes: {}, accepted: [] }, // the open pot
@@ -208,6 +210,23 @@ export function viewFor(state, pid) {
     commitments: {},
     // Deals are private to the two houses that struck them.
     dealTable: JSON.parse(JSON.stringify(state.dealTable || { offers: {}, takes: {}, accepted: [] })),
+    // Trust and promises are public. A word given in open court is given in
+    // open court, and everybody watches whether it holds.
+    trust: { ...state.trust },
+    promises: (state.promises || []).map((p) => ({ ...p })),
+    // Third parties see *that* a bargain happened and who was in it, which is
+    // what makes betraying a partner visible. What was in it stays private.
+    deals: (state.deals || []).map((d) => {
+      const involved = [...new Set([...Object.keys(d.offers || {}), ...Object.keys(d.takes || {})])];
+      const mine = involved.includes(pid);
+      return mine
+        ? { ...d }
+        : {
+          round: d.round,
+          offers: Object.fromEntries(involved.map((x) => [x, {}])),
+          takes: Object.fromEntries(involved.map((x) => [x, {}])),
+        };
+    }),
     goodwill: { ...state.goodwill },
     winner: state.winner,
   };

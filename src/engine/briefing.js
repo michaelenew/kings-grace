@@ -8,6 +8,8 @@
 // seat has an edge. For balance, put agents in the seats.
 
 import { BAND_LABEL, CARD_LABEL, CROWN, ORDER_LABEL, TITLE_BY_ID, bandOf, cardText } from './constants.js';
+import { describeIntent } from './diplomacy.js';
+import { trustLabel } from './trust.js';
 
 const fmt = (n) => (n > 0 ? `+${n}` : `${n}`);
 
@@ -51,6 +53,27 @@ export function boardBriefing(view) {
       lines.push(`- ${name} said they would ${pact.kind}, to ${view.players.find((p) => p.id === pact.with)?.name}`);
     }
     lines.push('');
+  }
+
+  const word = (view.promises || []).filter((p) => p.round === view.round);
+  if (word.length) {
+    lines.push('WORDS GIVEN THIS ROUND (free, binding on nobody, and everyone is watching)');
+    for (const p of word) {
+      const from = view.players.find((x) => x.id === p.from)?.name ?? p.from;
+      const to = view.players.find((x) => x.id === p.to)?.name ?? p.to;
+      lines.push(`- ${from} gave ${to} their word ${describeIntent({ players: view.players }, p)}`);
+    }
+    lines.push('');
+  }
+
+  const opinions = view.players.filter((p) => p.id !== me.id).map((p) => {
+    const theyThink = view.trust?.[`${p.id}>${me.id}`] ?? 0;
+    const youThink = view.trust?.[`${me.id}>${p.id}`] ?? 0;
+    return `- ${p.name} thinks you are ${trustLabel(theyThink)}; you think they are ${trustLabel(youThink)}`;
+  });
+  if (opinions.length) {
+    lines.push('WHAT THE COURT THINKS', ...opinions,
+      'Trust moves on deeds and on words. Hold a wall and they remember; strike a house you have just bargained with and everybody remembers. A house that thinks little of you wants a far better bargain before it signs, and past a point will not deal at all.', '');
   }
 
   lines.push(`You win by holding the highest fealty when the deck runs out, or by being the largest contributor to a successful attack on the Crown. You are ${me.name}.`);
@@ -145,7 +168,13 @@ Things that catch people out:
   Crown. A usurpation has to be a conspiracy.
 - Gold, land, titles and turncoat tokens move only through deals, and a deal
   settles only when everyone named accepts. Anything anyone promises to DO is
-  words. Words bind nobody, including you.`;
+  words. Words bind nobody, including you.
+- But words are not free. A promise you keep is worth a little with the house you
+  gave it to; a promise you break costs you with them and with every other house
+  at the table, because it is given in open court. So is striking somebody you
+  have just bargained with. A house that thinks little of you will want a far
+  better bargain before it signs, and past a point will not deal with you at all.
+  Betrayal is often worth it. It is never free.`;
 
 /** Coerce whatever came back into something the engine will accept. */
 export function parseDecision(text, request) {

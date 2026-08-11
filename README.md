@@ -30,6 +30,13 @@ Three things are worth knowing before your first game:
   levy. An army in the field cannot hold a gate, and a defender with no walls can
   have a *title* taken, not just a land. The levy resolves before orders are
   sealed, so everyone can see whose gate is open before they pick a target.
+- **Your word is free and it is not free.** You can give any house an
+  undertaking at any time. Nothing binds you to it and no bargain waits on it —
+  but it is given in open court, and when the orders turn over everyone sees
+  whether it held. Break it, or put a sword in a house you have just bargained
+  with, and the whole table thinks less of you. A house that thinks little of
+  you wants a much better bargain before it signs, and past a point will not
+  deal with you at all.
 - **A title is not yours to keep.** A grant at +2 or +3 can be spent on one
   somebody already holds, for 2 gold to the Crown. The first house to the Herald
   does not get to sit on it.
@@ -175,7 +182,15 @@ whether you can afford an appeal or a develop, and reads 1%.
 
 ### What the numbers do not cover
 
-The bots cannot bargain, never bluff, and do not gang up. Support between houses
+They can now give their word and break it — about 30 undertakings a game, kept
+just under half the time — and they hold opinions of each other that gate who
+will deal with whom. Broken down by kind, the numbers are their own argument:
+a promise to stand down is kept 98% of the time and a promise to march on the
+Crown together is kept **10%**, because the coup logic refuses to march when
+marching would crown somebody else. That is not a bug in the arithmetic. It is
+the most realistic thing they do.
+
+What they still cannot do: bluff, or gang up. Support between houses
 is under-represented because they only ever use it to shield the throne or
 honour a deal. The outlaw band's payoff is *information* — a peek at a sealed
 order, a turncoat token you can sell — which a scoring function converts far
@@ -199,6 +214,7 @@ src/engine/         the rules; knows nothing about the DOM
   tuning.js         every number the game is made of
   deals.js          one-shot bargains
   dealtable.js      the open pot: offers, takes, acceptances
+  trust.js          the ledger: words given, deeds done, opinions held
   briefing.js       the board and the question, in prose, for an agent
   constants.js      names, titles, card text
   state.js          setup, deck construction, redacted per-player views

@@ -129,6 +129,10 @@ function blankStats() {
     titlesHeld: 0,
     titlesTaken: 0,
     titlesClaimed: 0,
+    promisesMade: 0,
+    promisesKept: 0,
+    betrayals: 0, // struck a house you had just bargained with
+    trustSpread: [],
     byDoctrine: {},
     bySeat: [0, 0, 0, 0, 0, 0],
     seatGames: [0, 0, 0, 0, 0, 0],
@@ -219,6 +223,7 @@ function measure(stats, { state, winner, doctrines, bandRounds, samples, choices
     // title is meant to be that holding one paints a target on you.
     if (entry.kind === 'spoils' && entry.text.includes('strips')) stats.titlesTaken += 1;
     if (entry.kind === 'title' && entry.text.includes('claims the title')) stats.titlesClaimed += 1;
+    if (entry.kind === 'trust' && entry.text.includes('then drew on them')) stats.betrayals += 1;
     if (entry.kind === 'combat' && entry.text.includes('strikes at')) {
       stats.battles += 1;
       if (entry.text.includes('breaks through')) stats.battlesWon += 1;
@@ -234,6 +239,14 @@ function measure(stats, { state, winner, doctrines, bandRounds, samples, choices
       // Which band was the player in when they sealed it?
     }
   }
+
+  for (const promise of state.promises || []) {
+    if (promise.kept === null) continue;
+    stats.promisesMade += 1;
+    if (promise.kept) stats.promisesKept += 1;
+  }
+  const ledger = Object.values(state.trust || {});
+  if (ledger.length) stats.trustSpread.push(mean(ledger.map(Math.abs)));
 
   for (const p of state.players) {
     const won = !!(winner && winner.playerIds.includes(p.id));
@@ -307,6 +320,10 @@ async function tournament(tuningOverride, { n, ransom, doctrines, players = 4 })
       titlesPerGame: stats.titlesHeld / stats.games,
       titlesTakenPerGame: stats.titlesTaken / stats.games,
       titlesClaimedPerGame: stats.titlesClaimed / stats.games,
+      promisesPerGame: stats.promisesMade / stats.games,
+      promisesKept: pct(stats.promisesKept, stats.promisesMade),
+      betrayalsPerGame: stats.betrayals / stats.games,
+      meanTrustHeld: mean(stats.trustSpread),
       doctrineRates,
       doctrineSpread: spread,
       seatRates: stats.bySeat.map((w, i) => pct(w, stats.seatGames[i])).filter((_, i) => stats.seatGames[i] > 0),
@@ -348,6 +365,9 @@ function detail(name, s) {
   console.log('  doctrines   ', s.doctrineRates.map((d) => `${d.name} ${d.rate.toFixed(0)}% (${d.usurps}f/${d.inherits}h)`).join('  '));
   console.log('  starved     ', `${s.starvedChoices.toFixed(0)}% of turns cannot afford an appeal or a develop`);
   console.log('  coronets    ', `${s.titlesTakenPerGame.toFixed(2)} taken by sword, ${s.titlesClaimedPerGame.toFixed(2)} claimed by grant, per game`);
+  console.log('  the word    ', `${s.promisesPerGame.toFixed(1)} given per game, ${s.promisesKept.toFixed(0)}% kept`,
+    `· ${s.betrayalsPerGame.toFixed(2)} houses struck by someone they had just dealt with`,
+    `· mean opinion held ${s.meanTrustHeld.toFixed(2)} of 3`);
   console.log('  title edge  ', s.titleRates.map((t) => `${t.name} ${t.edge.toFixed(2)}x`).join('  '),
     `  spread ${s.titleSpread.toFixed(2)}x`);
   const f = s.fun;
