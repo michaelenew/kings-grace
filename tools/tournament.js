@@ -8,7 +8,7 @@
 // across seeds so seat order washes out.
 
 import { Game } from '../src/engine/game.js';
-import { createGame } from '../src/engine/state.js';
+import { createGame, legalOrders } from '../src/engine/state.js';
 import { DOCTRINE_NAMES, createAI, saltFor } from '../src/engine/ai.js';
 import { BAND, CROWN, ORDER, PERSONALITIES, bandOf } from '../src/engine/constants.js';
 import { resolveTuning } from '../src/engine/tuning.js';
@@ -56,15 +56,17 @@ function mergeTuning(into, patch) {
  * How far a configuration is from a game worth playing. Lower is better.
  * Every term is a thing a first playtest would complain about out loud.
  */
-function imbalance(s) {
+function imbalance(s, players = 4) {
   let penalty = 0;
   const notes = [];
   const add = (n, why) => { if (n > 0.5) { penalty += n; notes.push(`${why} ${n.toFixed(0)}`); } };
 
   // Both roads to the throne should be live.
   add(Math.abs(s.usurp - 50) * 0.9, 'road-mix');
-  // No strategy should be dead or dominant.
-  add(s.doctrineSpread * 1.6, 'doctrine-spread');
+  // No strategy should be dead or dominant. Spread is measured relative to the
+  // 1/players baseline: 27 points between two doctrines at a two-player table
+  // is the same imbalance as 13 points between four.
+  add(s.doctrineSpread * players * 0.4, 'doctrine-spread');
   // The game should use most of its deck without dragging past it.
   add(Math.max(0, 8.5 - s.meanRound) * 9, 'too-short');
   add(Math.max(0, s.meanRound - 11.5) * 6, 'too-long');
@@ -74,6 +76,9 @@ function imbalance(s) {
   add(Math.max(0, 0.5 - s.coupAttemptsPerGame) * 30, 'no-coups');
   // Swords should come out.
   add(Math.max(0, 3.5 - s.battlesPerGame) * 8, 'no-fighting');
+  // Being priced out of every order but attack-or-support is not a decision,
+  // it is a dead turn. This is the single loudest feel problem there is.
+  add(Math.max(0, s.starvedChoices - 8) * 2.2, 'starved-choices');
   // No single order should dominate the round, and none should be dead.
   for (const [k, v] of Object.entries(s.orderMix)) {
     if (k === 'attackCrown' || k === 'ransom' || k === 'hold') continue;
@@ -82,6 +87,9 @@ function imbalance(s) {
     // to shield the throne, so a low figure measures bot coverage, not the game.
     if (k !== 'support') add(Math.max(0, 8 - v) * 1.2, `${k}-dead`);
   }
+  // Which title you pick should not decide the game. When one is worth half
+  // again as much as another, the grant at +2 stops being a choice.
+  add(Math.max(0, s.titleSpread - 0.45) * 34, 'title-spread');
   // The three bands are the game's whole identity. If everyone ends up in one
   // of them the archetype system has collapsed, however even the win rates look.
   for (const [k, v] of Object.entries(s.bands)) {
@@ -108,8 +116,13 @@ function blankStats() {
     endGold: [],
     titlesHeld: 0,
     byDoctrine: {},
-    bySeat: [0, 0, 0, 0],
-    seatGames: [0, 0, 0, 0],
+    bySeat: [0, 0, 0, 0, 0, 0],
+    seatGames: [0, 0, 0, 0, 0, 0],
+    choices: 0,
+    starved: 0,
+    heraldGames: 0,
+    heraldWins: 0,
+    byTitle: {},
     winnerFealty: [],
     winnerLands: [],
     lastCoupWindow: [],
@@ -121,9 +134,9 @@ function noteDoctrine(stats, doctrine) {
   return stats.byDoctrine[doctrine];
 }
 
-async function runGame(seed, tuning, options, doctrinePool) {
+async function runGame(seed, tuning, options, doctrinePool, players = 4) {
   const rng = makeRng(seed ^ 0x9e3779b9);
-  const chosen = rng.shuffle(doctrinePool).slice(0, 4);
+  const chosen = Array.from({ length: players }, (_, i) => rng.shuffle(doctrinePool)[i % doctrinePool.length]);
   const personalities = rng.shuffle(PERSONALITIES);
   const state = createGame({
     seed,
@@ -134,6 +147,19 @@ async function runGame(seed, tuning, options, doctrinePool) {
   const controllers = {};
   state.players.forEach((p) => { controllers[p.id] = createAI(p.personality, p.doctrine, saltFor(state.seed, p.seat)); });
   const game = new Game({ state, controllers });
+  // How often a player is reduced to attack-or-support because they cannot
+  // afford anything else. This is the "I only have two buttons" complaint,
+  // measured. It is a feel metric, and it matters as much as the win rates.
+  let choices = 0;
+  let starved = 0;
+  const originalCommitPhase = game.commitPhase.bind(game);
+  game.commitPhase = async () => {
+    for (const p of game.state.players) {
+      choices += 1;
+      if (legalOrders(game.state, p).length <= 2) starved += 1;
+    }
+    return originalCommitPhase();
+  };
   // Sample band occupancy every round, not just at the end: the endgame is a
   // fealty race by design, so end-state alone says nothing about the middle.
   const bandRounds = { favorite: 0, neutral: 0, outlaw: 0 };
@@ -145,12 +171,14 @@ async function runGame(seed, tuning, options, doctrinePool) {
     samples += 1;
   };
   const winner = await game.run();
-  return { state, winner, doctrines: chosen, bandRounds, samples };
+  return { state, winner, doctrines: chosen, bandRounds, samples, choices, starved };
 }
 
-function measure(stats, { state, winner, doctrines, bandRounds, samples }) {
+function measure(stats, { state, winner, doctrines, bandRounds, samples, choices, starved }) {
   for (const [k, v] of Object.entries(bandRounds || {})) stats.bandRounds[k] += v;
-  stats.bandSamples += (samples || 0) * 4;
+  stats.bandSamples += (samples || 0) * state.players.length;
+  stats.choices += choices || 0;
+  stats.starved += starved || 0;
   stats.games += 1;
   stats.rounds += state.round;
 
@@ -182,6 +210,16 @@ function measure(stats, { state, winner, doctrines, bandRounds, samples }) {
   }
 
   for (const p of state.players) {
+    const won = !!(winner && winner.playerIds.includes(p.id));
+    for (const t of p.titles) {
+      stats.byTitle[t] ??= { games: 0, wins: 0 };
+      stats.byTitle[t].games += 1;
+      if (won) stats.byTitle[t].wins += 1;
+    }
+    if (p.titles.includes('herald')) {
+      stats.heraldGames += 1;
+      if (won) stats.heraldWins += 1;
+    }
     stats.endBandCount[bandOf(p.fealty)] += 1;
     stats.endGold.push(p.gold);
     stats.titlesHeld += p.titles.length;
@@ -201,16 +239,21 @@ function measure(stats, { state, winner, doctrines, bandRounds, samples }) {
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 const pct = (n, d) => (d ? (100 * n) / d : 0);
 
-async function tournament(tuningOverride, { n, ransom, doctrines }) {
+async function tournament(tuningOverride, { n, ransom, doctrines, players = 4 }) {
   const tuning = resolveTuning(tuningOverride);
   const stats = blankStats();
   const pool = doctrines || POOL;
   for (let seed = 1; seed <= n; seed++) {
-    measure(stats, await runGame(seed, tuningOverride, { ransom }, pool));
+    measure(stats, await runGame(seed, tuningOverride, { ransom }, pool, players));
   }
   const totalOrders = Object.entries(stats.orders)
     .filter(([k]) => k !== 'attackCrown')
     .reduce((a, [, v]) => a + v, 0);
+  const baseline = 100 / Math.max(1, players);
+  const titleEdges = Object.entries(stats.byTitle)
+    .map(([name, t]) => ({ name, rate: pct(t.wins, t.games), edge: pct(t.wins, t.games) / baseline, games: t.games }))
+    .sort((a, b) => b.edge - a.edge);
+  const titleSpread = titleEdges.length > 1 ? titleEdges[0].edge - titleEdges[titleEdges.length - 1].edge : 0;
   const doctrineRates = Object.entries(stats.byDoctrine)
     .map(([name, d]) => ({ name, rate: pct(d.wins, d.games), games: d.games, usurps: d.usurps, inherits: d.inherits }))
     .sort((a, b) => b.rate - a.rate);
@@ -238,7 +281,14 @@ async function tournament(tuningOverride, { n, ransom, doctrines }) {
       titlesPerGame: stats.titlesHeld / stats.games,
       doctrineRates,
       doctrineSpread: spread,
-      seatRates: stats.bySeat.map((w, i) => pct(w, stats.seatGames[i])),
+      seatRates: stats.bySeat.map((w, i) => pct(w, stats.seatGames[i])).filter((_, i) => stats.seatGames[i] > 0),
+      starvedChoices: pct(stats.starved, stats.choices),
+      heraldWinRate: pct(stats.heraldWins, stats.heraldGames),
+      // Reported as a multiple of the 1/players baseline: a title held in a
+      // six-player game is doing well at 20%, badly at 20% in a two-player one.
+      titleRates: titleEdges,
+      titleSpread,
+      doctrineBaseline: baseline,
       meanWinnerFealty: mean(stats.winnerFealty),
     },
   };
@@ -267,6 +317,9 @@ function detail(name, s) {
   console.log('  band-rounds ', Object.entries(s.bands).map(([k, v]) => `${k} ${v.toFixed(0)}%`).join('  '),
     '   at the end:', Object.entries(s.endBands).map(([k, v]) => `${k} ${v.toFixed(0)}%`).join(' '));
   console.log('  doctrines   ', s.doctrineRates.map((d) => `${d.name} ${d.rate.toFixed(0)}% (${d.usurps}f/${d.inherits}h)`).join('  '));
+  console.log('  starved     ', `${s.starvedChoices.toFixed(0)}% of turns offer only attack-or-support`);
+  console.log('  title edge  ', s.titleRates.map((t) => `${t.name} ${t.edge.toFixed(2)}x`).join('  '),
+    `  spread ${s.titleSpread.toFixed(2)}x`);
   console.log('  seats       ', s.seatRates.map((r) => `${r.toFixed(0)}%`).join(' '),
     '  mean winner fealty', s.meanWinnerFealty.toFixed(1),
     '  mean end gold', s.meanEndGold.toFixed(1),

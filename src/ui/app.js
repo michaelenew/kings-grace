@@ -9,7 +9,7 @@ import {
 } from '../engine/constants.js';
 import { Game, describeOrder } from '../engine/game.js';
 import { createGame, crownStrength, commitCeiling } from '../engine/state.js';
-import { PRESETS, resolveTuning } from '../engine/tuning.js';
+import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
 import { PARLEY_KINDS, proposeParley } from '../engine/diplomacy.js';
 import { el, mount, number, select } from './dom.js';
@@ -32,16 +32,17 @@ const app = {
     seed: '',
     ransom: false,
     seedFavorEarly: true,
-    preset: 'tuned',
-    tuning: {}, // overrides on top of the preset
-    seats: [{ kind: 'human' }, { kind: 'ai' }, { kind: 'ai' }, { kind: 'ai' }],
+    players: 4,
+    tuning: {}, // overrides on top of the rules
+    seats: Array.from({ length: PLAYER_MAX }, (_, i) => ({ kind: i === 0 ? 'human' : 'ai' })),
   },
   advancedOpen: false,
 };
 
 /** The knobs worth putting in front of a playtester, in the order they matter. */
 const KNOBS = [
-  { key: 'crownBase', label: 'Crown strength constant', hint: 'Crown strength is this plus the cards still in the deck.' },
+  { key: 'crownBase', label: 'Crown strength constant' },
+  { key: 'crownPerPlayer', label: 'Crown strength per player', negative: true },
   { key: 'commitCap', label: 'Most gold in one order', hint: 'Blank for no cap. A cap is what forces a usurpation to be a conspiracy.', nullable: true },
   { key: 'petitionCost', label: 'Petition cost' },
   { key: 'pardonCost', label: 'Pardon cost (outlaws)' },
@@ -105,7 +106,7 @@ function startGame() {
     seed: s.seed.trim() === '' ? undefined : s.seed.trim(),
     options: { ransom: s.ransom, seedFavorEarly: s.seedFavorEarly },
     tuning: activeTuning(),
-    seats: s.seats.map((seat, i) => ({ kind: seat.kind, name: HOUSE_NAMES[i] })),
+    seats: s.seats.slice(0, s.players).map((seat, i) => ({ kind: seat.kind, name: HOUSE_NAMES[i] })),
   });
   const controllers = {};
   app.humanSeats = new Set();
@@ -140,10 +141,9 @@ function startGame() {
   game.run();
 }
 
-/** Preset plus whatever the player has overridden on top of it. */
+/** The rules, plus whatever the player has overridden on the setup screen. */
 function activeTuning() {
-  const s = app.settings;
-  return { ...(PRESETS[s.preset]?.tuning || {}), ...s.tuning };
+  return { ...app.settings.tuning };
 }
 
 function firstHuman(state) {
@@ -193,15 +193,18 @@ function setupScreen() {
       el('h1', { class: 'title' }, 'The King’s Graces'),
       el('p', { class: 'subtitle' }, 'Serve the crown, grow fat, or vanish into outlawry — then take the throne before someone else inherits it.'),
       el('h3', {}, 'The table'),
-      el('div', { class: 'seats' }, [0, 1, 2, 3].map(seatRow)),
-      el('h3', {}, 'Rules'),
-      select(
-        Object.entries(PRESETS).map(([id, p]) => ({ value: id, label: p.label })),
-        s.preset,
-        (v) => { s.preset = v; s.tuning = {}; render(); },
-        { class: 'wide' },
-      ),
-      el('p', { class: 'hint' }, PRESETS[s.preset]?.note || ''),
+      el('label', { class: 'field' }, [
+        el('span', {}, 'Houses'),
+        select(
+          Array.from({ length: PLAYER_MAX - PLAYER_MIN + 1 }, (_, i) => ({
+            value: PLAYER_MIN + i, label: `${PLAYER_MIN + i} players`,
+          })),
+          s.players,
+          (v) => { s.players = Number(v); render(); },
+        ),
+      ]),
+      el('div', { class: 'seats' }, Array.from({ length: s.players }, (_, i) => seatRow(i))),
+      el('p', { class: 'hint' }, `The Crown stands at ${resolveTuning(activeTuning()).crownBase + resolveTuning(activeTuning()).crownPerPlayer * s.players} plus the cards left in its deck. A small table has fewer nobles to rally to it, so it stands taller.`),
       el('h3', {}, 'Variants'),
       el('label', { class: 'check' }, [
         el('input', { type: 'checkbox', checked: s.ransom, onchange: (e) => { s.ransom = e.target.checked; } }),
@@ -224,7 +227,7 @@ function setupScreen() {
 
 function advancedPanel() {
   const s = app.settings;
-  const base = resolveTuning(PRESETS[s.preset]?.tuning || {});
+  const base = resolveTuning({});
   const live = resolveTuning(activeTuning());
   const header = el('button', {
     class: 'court-toggle',
@@ -237,7 +240,7 @@ function advancedPanel() {
     ...KNOBS.map((knob) => el('label', { class: 'field' }, [
       el('span', {}, knob.label),
       el('input', {
-        type: 'number', min: 0, max: 60,
+        type: 'number', min: knob.negative ? -10 : 0, max: 60,
         value: live[knob.key] === null ? '' : live[knob.key],
         placeholder: knob.nullable ? 'none' : '',
         oninput: (e) => {
@@ -257,7 +260,7 @@ function advancedPanel() {
         },
       }))),
     ]),
-    el('p', { class: 'hint' }, 'Changing anything here plays a variant of the game. tools/simulate.js is how these were chosen — it runs bot tournaments over whatever you set.'),
+    el('p', { class: 'hint' }, 'Changing anything here plays a variant. tools/simulate.js is how these were chosen — it runs bot tournaments over whatever you set.'),
     el('button', { class: 'ghost small', onclick: () => { s.tuning = {}; render(); } }, 'Back to the preset'),
   ]);
 }

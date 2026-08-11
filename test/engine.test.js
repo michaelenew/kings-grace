@@ -1,42 +1,62 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BAND, CARD, CROWN, ORDER, PLAYERS, bandOf } from '../src/engine/constants.js';
+import { BAND, CARD, CROWN, ORDER, bandOf } from '../src/engine/constants.js';
 import { buildDeck, crownStrength, legalOrders } from '../src/engine/state.js';
-import { V0_1 } from '../src/engine/tuning.js';
+import { RULES, deckSize, neutralPoolFor } from '../src/engine/tuning.js';
 import { makeRng } from '../src/engine/rng.js';
 import { fillOrders, get, makeGame, set } from './_helpers.js';
 
 // ---------------------------------------------------------------- setup (§1)
 
-test('setup matches the rules sheet', () => {
+test('setup deals what the rules say', () => {
   const g = makeGame();
-  assert.equal(g.state.players.length, PLAYERS);
+  assert.equal(g.state.players.length, 4);
   for (const p of g.state.players) {
-    assert.equal(p.lands, 3);
-    assert.equal(p.gold, 5);
-    assert.equal(p.fealty, 0);
+    assert.equal(p.lands, RULES.startLands);
+    assert.equal(p.gold, RULES.startGold);
+    assert.equal(p.fealty, RULES.startFealty);
   }
-  assert.equal(g.state.neutralPool, 8);
-  assert.equal(g.state.deck.length, 12);
-  assert.equal(crownStrength(g.state), 16, 'crown strength starts at 16');
+  assert.equal(g.state.neutralPool, neutralPoolFor(RULES, 4));
+  assert.equal(g.state.deck.length, deckSize(RULES));
 });
 
-test('crown deck holds 4 tax, 4 levy, 3 favor, 1 purge', () => {
-  const deck = buildDeck(makeRng(3), false, V0_1);
-  const count = (c) => deck.filter((x) => x === c).length;
-  assert.equal(count(CARD.TAX), 4);
-  assert.equal(count(CARD.LEVY), 4);
-  assert.equal(count(CARD.FAVOR), 3);
-  assert.equal(count(CARD.PURGE), 1);
+test('the crown stands taller at a small table than a large one', () => {
+  const strengthAt = (players) => {
+    const g = makeGame({ players });
+    return crownStrength(g.state);
+  };
+  assert.ok(strengthAt(2) > strengthAt(4), 'two-handed play needs a taller crown');
+  assert.ok(strengthAt(4) > strengthAt(6), 'six-handed play needs a shorter one');
+  const g = makeGame();
+  assert.equal(
+    crownStrength(g.state),
+    RULES.crownBase + RULES.crownPerPlayer * 4 + g.state.deck.length,
+    'crown strength is base + per-player + cards remaining',
+  );
+});
+
+test('a game can be dealt for two through six players', () => {
+  for (let players = 2; players <= 6; players++) {
+    const g = makeGame({ players });
+    assert.equal(g.state.players.length, players);
+    assert.equal(g.state.neutralPool, neutralPoolFor(RULES, players));
+    assert.equal(new Set(g.state.players.map((p) => p.name)).size, players, 'every house is named');
+  }
+});
+
+test('the crown deck holds what the rules say', () => {
+  const deck = buildDeck(makeRng(3), false, RULES);
+  for (const [card, count] of Object.entries(RULES.deck)) {
+    assert.equal(deck.filter((x) => x === card).length, count, card);
+  }
 });
 
 test('the tuning knob seeds a Favor into the first three flips', () => {
   for (let seed = 1; seed <= 40; seed++) {
-    const deck = buildDeck(makeRng(seed), true, V0_1);
+    const deck = buildDeck(makeRng(seed), true, RULES);
     assert.ok(deck.slice(0, 3).includes(CARD.FAVOR), `seed ${seed}`);
-    assert.equal(deck.length, 12);
-    assert.equal(deck.filter((c) => c === CARD.FAVOR).length, 3);
+    assert.equal(deck.length, deckSize(RULES));
   }
 });
 
@@ -65,7 +85,7 @@ test('tax charges by band, Chancellor pays 1 less, and nobody pays what they lac
   assert.equal(g.state.crownGold, 1 + 2 + 2 + 1);
 });
 
-test('levy: pay 2 or drop a fealty, and the poor have no choice', async () => {
+test('levy: pay the demand or drop a fealty, and the poor have no choice', async () => {
   const g = makeGame({
     controllers: {
       p0: { levy: 'pay' },
@@ -73,14 +93,15 @@ test('levy: pay 2 or drop a fealty, and the poor have no choice', async () => {
       p3: { levy: 'pay' },
     },
   });
-  set(g.state, 'p2', { gold: 1 }); // cannot pay
+  const levy = g.state.tuning.levyCost;
+  set(g.state, 'p2', { gold: levy - 1 }); // cannot pay
   set(g.state, 'p3', { fealty: -3 });
   await g.resolveLevy();
-  assert.equal(get(g.state, 'p0').gold, 3);
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold - levy);
   assert.equal(get(g.state, 'p1').fealty, -1);
-  assert.equal(get(g.state, 'p2').gold, 1);
+  assert.equal(get(g.state, 'p2').gold, levy - 1, 'the poor pay nothing');
   assert.equal(get(g.state, 'p2').fealty, -1);
-  assert.equal(get(g.state, 'p3').gold, 3);
+  assert.equal(get(g.state, 'p3').gold, RULES.startGold - levy);
 });
 
 test('levy at the floor of the track costs nothing', async () => {
@@ -145,10 +166,10 @@ test('legal orders track what you can afford', () => {
 test('committing escrows gold immediately and a turncoat change refunds it', () => {
   const g = makeGame();
   g.commit('p0', { order: ORDER.ATTACK, target: 'p1', gold: 4 });
-  assert.equal(get(g.state, 'p0').gold, 1);
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold - 4);
   assert.equal(get(g.state, 'p0').escrow, 4);
   g.recommit('p0', { order: ORDER.DEVELOP });
-  assert.equal(get(g.state, 'p0').gold, 2);
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold - RULES.developCost);
   assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP);
 });
 
@@ -165,8 +186,12 @@ test('develop takes a land from the pool; a depleted pool refunds the purse', as
   const lands = [get(g.state, 'p0').lands, get(g.state, 'p1').lands].sort();
   assert.deepEqual(lands, [3, 4], 'only one land was available');
   assert.equal(g.state.neutralPool, 0);
-  const golds = [get(g.state, 'p0').gold, get(g.state, 'p1').gold].sort();
-  assert.deepEqual(golds, [2, 5], 'the player who missed out gets the 3 gold back');
+  const golds = [get(g.state, 'p0').gold, get(g.state, 'p1').gold].sort((a, b) => a - b);
+  assert.deepEqual(
+    golds,
+    [RULES.startGold - RULES.developCost, RULES.startGold],
+    'the player who missed out gets their gold back',
+  );
 });
 
 // -------------------------------------------------------------- combat (§5)
@@ -390,13 +415,16 @@ test('each fealty threshold grants a title only once, ever', async () => {
 // ---------------------------------------------------------- usurpation (§5)
 
 test('a winning coalition crowns its largest contributor', async () => {
-  const g = makeGame();
-  g.state.deck = [CARD.TAX]; // crown strength 5
-  set(g.state, 'p0', { gold: 4 });
-  set(g.state, 'p1', { gold: 3 });
+  const g = makeGame({ tuning: { commitCap: null } });
+  g.state.deck = [CARD.TAX];
+  const need = crownStrength(g.state) + 1; // must beat it outright
+  const big = Math.ceil(need / 2) + 1;
+  const small = need - big + 1;
+  set(g.state, 'p0', { gold: big });
+  set(g.state, 'p1', { gold: small });
   fillOrders(g, {
-    p0: { order: ORDER.ATTACK, target: CROWN, gold: 4 },
-    p1: { order: ORDER.ATTACK, target: CROWN, gold: 3 },
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: big },
+    p1: { order: ORDER.ATTACK, target: CROWN, gold: small },
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -526,9 +554,9 @@ test('a dead heat crowns co-rulers', () => {
 test('gold can be given away, but escrowed gold cannot', () => {
   const g = makeGame();
   assert.equal(g.gift('p0', 'p1', 3), true);
-  assert.equal(get(g.state, 'p0').gold, 2);
-  assert.equal(get(g.state, 'p1').gold, 8);
-  g.commit('p0', { order: ORDER.ATTACK, target: 'p1', gold: 2 });
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold - 3);
+  assert.equal(get(g.state, 'p1').gold, RULES.startGold + 3);
+  g.commit('p0', { order: ORDER.ATTACK, target: 'p1', gold: RULES.startGold - 3 });
   assert.equal(g.gift('p0', 'p1', 1), false, 'nothing left outside the war chest');
 });
 
@@ -606,7 +634,7 @@ test('ransom steals gold and reads the target\'s band', async () => {
     p3: { order: ORDER.DEVELOP },
   });
   await g.resolvePhase();
-  assert.equal(get(g.state, 'p0').gold, 7);
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold + RULES.ransomTake);
   assert.equal(get(g.state, 'p0').fealty, -2, 'the crown protects its own');
   assert.equal(get(g.state, 'p2').fealty, 1, 'bounty hunting pays');
   assert.equal(get(g.state, 'p0').ransomUsed, true);
@@ -621,7 +649,7 @@ test('ransoming the Crown pays 5 gold and outlaws you', async () => {
     p3: { order: ORDER.PETITION },
   });
   await g.resolvePhase();
-  assert.equal(get(g.state, 'p0').gold, 10);
+  assert.equal(get(g.state, 'p0').gold, RULES.startGold + RULES.ransomCrownGold);
   assert.equal(get(g.state, 'p0').fealty, -3);
 });
 

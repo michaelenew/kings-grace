@@ -73,7 +73,6 @@ export const TITLES = [
 
 export const TITLE_BY_ID = Object.fromEntries(TITLES.map((t) => [t.id, t]));
 
-export const PLAYERS = 4;
 export const FEALTY_MIN = -3;
 export const FEALTY_MAX = 3;
 
@@ -89,6 +88,8 @@ export const HOUSE_NAMES = [
   'Roderic of Thornfell',
   'Otho of Greyholt',
   'Sibylla of Vaunt',
+  'Emeric of Dunhollow',
+  'Isolde of Barrowmere',
 ];
 
 export const PERSONALITIES = ['loyalist', 'merchant', 'schemer', 'wolf'];

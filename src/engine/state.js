@@ -1,7 +1,7 @@
 // Game state construction and pure read-only helpers.
 
 import { BAND, CARD, CROWN, HOUSE_NAMES, ORDER, PERSONALITIES, TITLES, bandOf } from './constants.js';
-import { deckSize, resolveTuning } from './tuning.js';
+import { PLAYER_MAX, PLAYER_MIN, deckSize, neutralPoolFor, resolveTuning } from './tuning.js';
 import { makeRng, seedFrom } from './rng.js';
 
 /**
@@ -44,9 +44,9 @@ export function createGame(opts = {}) {
     ...(opts.options || {}),
   };
 
-  const seatCount = opts.seats?.length || 4;
+  const seatCount = Math.max(PLAYER_MIN, Math.min(PLAYER_MAX, opts.seats?.length || opts.players || 4));
   const seatSpecs = opts.seats && opts.seats.length
-    ? opts.seats
+    ? opts.seats.slice(0, PLAYER_MAX)
     : Array.from({ length: seatCount }, () => ({ kind: 'ai' }));
 
   const personalityBag = rng.shuffle(PERSONALITIES);
@@ -77,7 +77,7 @@ export function createGame(opts = {}) {
     deckStart: deckSize(tuning),
     discard: [],
     lastCard: null,
-    neutralPool: tuning.neutralPool,
+    neutralPool: neutralPoolFor(tuning, players.length),
     crownLands: 0, // lands forfeited to the Crown (out of play)
     crownGold: 0,
     players,
@@ -110,11 +110,16 @@ export function unclaimedTitles(state) {
 }
 
 /**
- * §1 — crown strength = base + cards remaining.
- * Both terms are tuning knobs; §10 calls the base out by name.
+ * Crown strength = base + per-player x players + cards remaining.
+ *
+ * The per-player term is what lets the game run 2-6 handed: a bigger table can
+ * raise a bigger coalition against the throne, so the throne has to stand
+ * taller. Without it a six-player coup is trivial and a two-player one is
+ * impossible.
  */
 export function crownStrength(state) {
-  return state.tuning.crownBase + state.tuning.crownPerCard * state.deck.length;
+  const t = state.tuning;
+  return t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * state.deck.length;
 }
 
 /** The most gold a single order may carry (§3's cap, off by default). */

@@ -1,96 +1,92 @@
 // Every number the game is made of, in one place.
 //
-// `V0_1` is the rules sheet exactly as written — the reference implementation,
-// and what the test suite checks against. The other presets are the result of
-// the bot tournaments in tools/simulate.js; see README for the numbers.
+// These are the rules in play. They were arrived at with the bot tournaments in
+// tools/simulate.js — see the README for the measurements behind each one.
+// Anything here can be overridden per game (the setup screen exposes the ones
+// worth touching), which is how you playtest a variant without editing code.
 
-export const V0_1 = {
-  // Setup (§1)
+export const PLAYER_MIN = 2;
+export const PLAYER_MAX = 6;
+
+export const RULES = {
+  // ---- Setup ----------------------------------------------------------
   startLands: 3,
-  startGold: 5,
+  startGold: 6,
   startFealty: 0,
-  neutralPool: 8,
-  deck: { tax: 4, levy: 4, favor: 3, purge: 1 },
+  /** Unclaimed land is dealt per player, so Develop stays live at any count. */
+  neutralPerPlayer: 2,
+  deck: { tax: 5, levy: 4, favor: 2, purge: 1 },
 
-  // Crown (§1, §5)
-  crownBase: 4,
+  // ---- The Crown ------------------------------------------------------
+  // Crown strength = crownBase + crownPerPlayer x players + cards remaining.
+  // With these values that is 8 + cards at two players, falling to 4 + cards at
+  // six — the crown stands taller at a small table and shorter at a large one.
+  //
+  // That is the opposite of the obvious intuition and it is what the games
+  // show: a coup is not stopped by the crown alone but by whoever else throws
+  // gold behind it, and a big table has more nobles available to do that. At a
+  // flat offset, two-player games ended in a coup 81% of the time and
+  // six-player games 45%.
+  //
+  // Raising the offset generally is tempting and wrong. A crown nobody can
+  // reach means the first player to +3 cannot be deposed, and the Herald then
+  // wins every tie forever: at an offset of 8 the Herald's holder won 44% of
+  // four-player games against 35% at 6. The coup is the check on the heir.
+  crownBase: 10,
+  crownPerPlayer: -1,
   crownPerCard: 1,
 
-  // Combat (§5, §7)
+  // ---- Combat ---------------------------------------------------------
   walls: 2,
-  // §2 — a favorite's attacks gain +fealty against anyone lower. The scale is
-  // a knob because that bonus and the standing cost of hitting a favorite are
-  // the two things that make the top of the track a safe place to sit.
+  /** A favorite's attacks gain +fealty against anyone lower down the track. */
   punchDownScale: 1,
-  // §4 — what attacking costs the attacker, by the target's band.
+  /** What attacking costs the attacker, by the target's band. */
   attackFealty: { favorite: -2, neutral: 0, outlaw: 1 },
   marshalBonus: 1,
   wardenBonus: 1,
-  commitCap: null, // null = uncapped
+  /**
+   * The most gold one order may carry. This is what makes a usurpation a
+   * conspiracy: no purse alone can outreach the crown, so the throne has to be
+   * bought with somebody else's sword.
+   */
+  commitCap: 6,
 
-  // Income (§3.4, §7)
+  // ---- Income ---------------------------------------------------------
   landIncome: 1,
   neutralIncome: 1,
   stewardIncome: 1,
 
-  // Orders (§4)
+  // ---- Orders ---------------------------------------------------------
   petitionCost: 2,
   pardonCost: 3,
   developCost: 3,
 
-  // Crown deck (§6)
+  // ---- Crown deck -----------------------------------------------------
   taxByBand: { favorite: 1, neutral: 2, outlaw: 3 },
   chancellorRelief: 1,
-  levyCost: 2,
+  levyCost: 4,
 
-  // Ransom module (§9)
+  // ---- Ransom module (optional) ---------------------------------------
   ransomTake: 2,
   ransomCrownGold: 5,
-};
-
-export const PRESETS = {
-  'v0.1': {
-    label: 'v0.1 — the rules as written',
-    note: 'The original sheet. Bot testing ends every game in a coup around round six.',
-    tuning: {},
-  },
-  tuned: {
-    label: 'Tuned — the balanced default',
-    note: 'Both roads to the throne stay live, the deck runs most of its length, and a usurpation needs a conspiracy.',
-    tuning: {
-      // A crown that decays from 18 to 6 rather than 16 to 4, against a
-      // commitment cap of 6: no single purse can buy the throne outright, so
-      // taking it means buying somebody's support first.
-      crownBase: 6,
-      commitCap: 6,
-      // Gold has to leave the table faster than it arrives, or every game ends
-      // in whoever hoarded hardest walking up to a bankrupt crown.
-      taxByBand: { favorite: 2, neutral: 3, outlaw: 4 },
-      levyCost: 4,
-      deck: { tax: 5, levy: 4, favor: 2, purge: 1 },
-      // Standing is the win condition, so it should not be the cheapest thing
-      // on the board. At 2 gold the track was an escalator everybody rode.
-      petitionCost: 3,
-      pardonCost: 4,
-    },
-  },
 };
 
 export function resolveTuning(input = {}) {
   const { taxByBand, deck, attackFealty, ...rest } = input;
   return {
-    ...V0_1,
+    ...RULES,
     ...rest,
-    taxByBand: { ...V0_1.taxByBand, ...(taxByBand || {}) },
-    attackFealty: { ...V0_1.attackFealty, ...(attackFealty || {}) },
-    deck: { ...V0_1.deck, ...(deck || {}) },
+    taxByBand: { ...RULES.taxByBand, ...(taxByBand || {}) },
+    attackFealty: { ...RULES.attackFealty, ...(attackFealty || {}) },
+    deck: { ...RULES.deck, ...(deck || {}) },
   };
-}
-
-export function presetTuning(name) {
-  return resolveTuning(PRESETS[name]?.tuning || {});
 }
 
 export function deckSize(tuning) {
   return Object.values(tuning.deck).reduce((a, b) => a + b, 0);
+}
+
+/** Unclaimed land dealt at setup for a given table size. */
+export function neutralPoolFor(tuning, players) {
+  return tuning.neutralPool ?? tuning.neutralPerPlayer * players;
 }

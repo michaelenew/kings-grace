@@ -5,18 +5,17 @@ import { Game } from '../src/engine/game.js';
 import { createGame, crownStrength } from '../src/engine/state.js';
 import { createAI, saltFor } from '../src/engine/ai.js';
 import { proposeParley } from '../src/engine/diplomacy.js';
-import { CROWN, ORDER, PERSONALITIES, PLAYERS, TITLES } from '../src/engine/constants.js';
-import { PRESETS, V0_1 } from '../src/engine/tuning.js';
+import { CROWN, ORDER, PERSONALITIES, TITLES } from '../src/engine/constants.js';
+import { RULES, neutralPoolFor } from '../src/engine/tuning.js';
 
-const TOTAL_LANDS = PLAYERS * V0_1.startLands + V0_1.neutralPool;
+const landsFor = (players) => players * RULES.startLands + neutralPoolFor(RULES, players);
 
-function botGame(seed, options = {}, tuning = {}) {
-  const { crownBase, ...rest } = options;
+function botGame(seed, options = {}, tuning = {}, players = 4) {
   const state = createGame({
     seed,
-    tuning: crownBase === undefined ? tuning : { ...tuning, crownBase },
-    options: rest,
-    seats: PERSONALITIES.map((personality) => ({ kind: 'ai', personality })),
+    tuning,
+    options,
+    seats: Array.from({ length: players }, (_, i) => ({ kind: 'ai', personality: PERSONALITIES[i % PERSONALITIES.length] })),
   });
   const controllers = {};
   state.players.forEach((p) => {
@@ -27,7 +26,7 @@ function botGame(seed, options = {}, tuning = {}) {
 
 function checkInvariants(state, where) {
   const held = state.players.reduce((a, p) => a + p.lands, 0);
-  assert.equal(held + state.neutralPool + state.crownLands, TOTAL_LANDS, `lands conserved ${where}`);
+  assert.equal(held + state.neutralPool + state.crownLands, landsFor(state.players.length), `lands conserved ${where}`);
   const seen = new Set();
   for (const p of state.players) {
     assert.ok(p.gold >= 0, `${p.name} gold non-negative ${where}`);
@@ -42,14 +41,16 @@ function checkInvariants(state, where) {
   assert.ok(seen.size <= TITLES.length);
 }
 
-test('bots play 60 whole games without breaking the board', async () => {
+test('bots play whole games at every table size without breaking the board', async () => {
   for (let seed = 1; seed <= 60; seed++) {
-    const game = botGame(seed, { ransom: seed % 2 === 0 });
+    const players = 2 + (seed % 5);
+    const game = botGame(seed, { ransom: seed % 2 === 0 }, {}, players);
     const unsubscribe = game.subscribe((s) => checkInvariants(s, `seed ${seed} round ${s.round}`));
     const winner = await game.run();
     unsubscribe();
     assert.ok(winner === null || Array.isArray(winner.playerIds), `seed ${seed} finished`);
     assert.ok(game.state.round <= 13, `seed ${seed} ended inside the crown deck`);
+    assert.equal(game.state.players.length, players);
     assert.ok(game.state.deck.length === 0 || winner?.how === 'usurp', `seed ${seed} ended for a reason`);
   }
 });
@@ -112,14 +113,13 @@ test('a commitment cap is never exceeded, by bot or by engine', async () => {
   }
 });
 
-// Under v0.1 a coup is either hopeless or already affordable alone, so nobody
-// needs an ally. The tuned preset caps what one order can carry, which is what
-// makes buying a sword the only way onto the throne.
+// The commitment cap is what makes buying a sword the only way onto the throne:
+// no single purse outreaches the crown, so a usurper needs an ally.
 test('bots buy the support a coup needs, and the gold really moves', async () => {
   let pactsSeen = 0;
   let goldMoved = 0;
   for (let seed = 1; seed <= 60; seed++) {
-    const game = botGame(seed, {}, PRESETS.tuned.tuning);
+    const game = botGame(seed, {});
     game.subscribe(() => {});
     const originalPut = game.putOffer.bind(game);
     game.putOffer = async (offer) => {
@@ -169,7 +169,7 @@ test('a bribe can buy a bot\'s sword, and the gold really moves', () => {
   const rich = proposeParley(game, { from: 'p0', to: 'p1', kind: 'attack', subject: 'p2', gold: 20 });
   assert.equal(typeof cheap.line, 'string');
   assert.ok(rich.accepted, 'a large enough purse should move a wolf');
-  assert.equal(state.players[1].gold, 5 + 20);
+  assert.equal(state.players[1].gold, RULES.startGold + 20);
   assert.equal(state.players[0].gold, 10);
   assert.equal(state.pacts.p1.kind, 'attack');
 });
@@ -181,5 +181,5 @@ test('a bot will not sell a promise it cannot be paid for', () => {
   const game = new Game({ state, controllers });
   const res = proposeParley(game, { from: 'p0', to: 'p1', kind: 'joinCoup', gold: 500 });
   assert.equal(res.accepted, false, 'you cannot pay gold you do not have');
-  assert.equal(state.players[1].gold, 5);
+  assert.equal(state.players[1].gold, RULES.startGold);
 });

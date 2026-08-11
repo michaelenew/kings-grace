@@ -11,15 +11,14 @@
 // taxFavorite set one rung, deckTax/deckFavor/... set deck counts,
 // hitFavorite/hitOutlaw set the standing cost of attacking that band.
 
-import { PRESETS } from '../src/engine/tuning.js';
 import { POOL, detail, expand, fmtRow, imbalance, mergeTuning, tournament } from './tournament.js';
 
 function parseArgs(argv) {
-  const args = { n: 400, preset: null, sweep: null, json: false, ransom: false, doctrines: null };
+  const args = { n: 400, sweep: null, json: false, ransom: false, doctrines: null, players: 4 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-n') args.n = Number(argv[++i]);
-    else if (a === '--preset') args.preset = argv[++i];
+    else if (a === '--players') args.players = Number(argv[++i]);
     else if (a === '--sweep') args.sweep = argv[++i];
     else if (a === '--json') args.json = true;
     else if (a === '--ransom') args.ransom = true;
@@ -28,6 +27,7 @@ function parseArgs(argv) {
     else if (a === '--search') args.search = true;
     else if (a === '--grid') args.grid = argv[++i];
     else if (a === '--top') args.top = Number(argv[++i]);
+    else if (a === '--counts') args.counts = true;
   }
   return args;
 }
@@ -42,7 +42,7 @@ function parseOverride(text) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const presetBase = () => ({ ...(args.preset ? PRESETS[args.preset].tuning : {}), ...(args.override || {}) });
+const presetBase = () => ({ ...(args.override || {}) });
 
 if (args.search) {
   const grid = args.grid
@@ -63,7 +63,7 @@ if (args.search) {
   const scored = [];
   for (const row of built) {
     const { summary } = await tournament(row.tuning, args);
-    const { penalty, notes } = imbalance(summary);
+    const { penalty, notes } = imbalance(summary, args.players);
     scored.push({ ...row, summary, penalty, notes });
   }
   scored.sort((a, b) => a.penalty - b.penalty);
@@ -77,26 +77,20 @@ if (args.search) {
   for (const raw of list.split(',')) {
     const tuning = mergeTuning(presetBase(), expand(key, raw));
     const { summary } = await tournament(tuning, args);
-    console.log(`${String(imbalance(summary).penalty.toFixed(0)).padStart(4)}  ${fmtRow(`${key}=${raw}`, summary)}`);
+    console.log(`${String(imbalance(summary, args.players).penalty.toFixed(0)).padStart(4)}  ${fmtRow(`${key}=${raw}`, summary)}`);
   }
-} else if (args.preset) {
+} else if (args.counts) {
+  console.log(`${args.n} games at each table size\n`);
+  for (const players of [2, 3, 4, 5, 6]) {
+    const { summary } = await tournament(presetBase(), { ...args, players });
+    console.log(`${String(imbalance(summary, players).penalty.toFixed(0)).padStart(4)}  ${fmtRow(`${players} players`, summary)}`);
+  }
+} else {
   const { summary } = await tournament(presetBase(), args);
   if (args.json) console.log(JSON.stringify(summary, null, 2));
   else {
-    detail(args.preset + (args.override ? ' (modified)' : ''), summary);
-    const { penalty, notes } = imbalance(summary);
-    console.log('  imbalance   ', penalty.toFixed(0), notes.length ? `(${notes.join('  ')})` : '(clean)');
-  }
-} else {
-  console.log(`${args.n} games per preset, four doctrines drawn from ${POOL.join('/')}\n`);
-  const results = {};
-  for (const [name, preset] of Object.entries(PRESETS)) {
-    results[name] = (await tournament(preset.tuning, args)).summary;
-    console.log(`${String(imbalance(results[name]).penalty.toFixed(0)).padStart(4)}  ${fmtRow(name, results[name])}`);
-  }
-  for (const [name, summary] of Object.entries(results)) {
-    detail(name, summary);
-    const { penalty, notes } = imbalance(summary);
+    detail(`${args.players} players${args.override ? ' (modified)' : ''}`, summary);
+    const { penalty, notes } = imbalance(summary, args.players);
     console.log('  imbalance   ', penalty.toFixed(0), notes.length ? `(${notes.join('  ')})` : '(clean)');
   }
 }

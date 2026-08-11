@@ -1,6 +1,13 @@
-# The King's Graces — Prototype Rules v0.1
+# The King's Graces
 
-*Working title. A competitive game of medieval noble politics for 4 players. Serve the crown, grow fat, or vanish into outlawry — then take the throne before someone else inherits it.*
+*A competitive game of medieval noble politics for 2–6 players. Serve the crown,
+grow fat, or vanish into outlawry — then take the throne before someone else
+inherits it.*
+
+These are the rules in play. Every number here is a constant the app exposes on
+its setup screen, and every one was chosen by the bot tournaments described in
+the README. Where a number replaces one from the original v0.1 sheet, the reason
+is in Appendix B.
 
 ---
 
@@ -8,24 +15,31 @@
 
 | Item | Quantity / Value |
 |---|---|
-| Players | 4 |
+| Players | 2–6 |
 | Starting lands per player | 3 |
-| Starting gold per player | 5 |
+| Starting gold per player | 6 |
 | Starting fealty per player | 0 |
-| Neutral land pool | 8 |
+| Neutral land pool | 2 per player |
 | Crown deck | 12 cards (composition in §6) |
 | Fealty track | −3 to +3 per player |
 | Titles | 6 unique (list in §7) |
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-Crown strength at any moment = **4 + cards remaining in the crown deck** (starts at 16, decays toward 4).
+**Crown strength** at any moment = **(10 − players) + cards remaining in the
+crown deck**. At four players that is 6 + cards, running 18 down to 6.
+
+The crown stands taller at a small table and shorter at a large one. This looks
+backwards and is not: a coup is stopped less by the crown than by whoever throws
+gold behind it, and a big table has more nobles available to do that.
 
 ---
 
 ## 2. Fealty Bands (the archetype system)
 
-Fealty is a single track per player. Where you stand grants a passive. All band effects and fealty consequences are evaluated **at resolution time**, not at commitment time.
+Fealty is a single track per player. Where you stand grants a passive. All band
+effects and fealty consequences are evaluated **at resolution time**, not at
+commitment time.
 
 ### Favorite (+2, +3) — the crown's sword
 - Your attacks gain **+fealty** as bonus strength, but **only against targets whose fealty is below yours**. Punching up or sideways gets nothing. The crown is above everyone, so this bonus can never touch the crown, and it cannot be added to the crown's defense (the crown's strength already *is* its loyal armies).
@@ -43,17 +57,22 @@ Fealty is a single track per player. Where you stand grants a passive. All band 
 
 ## 3. Round Structure
 
-One loop, four steps:
+One loop, five steps:
 
 1. **Crown flip.** Reveal the top crown card and resolve it immediately (§6).
-2. **Commit.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target. Then outlaws peek and may swap their own order (§2).
-3. **Reveal & resolve.** All orders flip simultaneously. Resolution order:
+2. **Table talk.** Anyone may put a proposal to anyone: gold for a sword, gold for a promise, gold for nothing. Gold moves for real. Promises do not bind.
+3. **Commit.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target. Then outlaws peek and may swap their own order (§2).
+4. **Reveal & resolve.** All orders flip simultaneously. Resolution order:
    1. **Petitions / pardons** (fealty moves now — bands recalculate),
    2. **Attacks** (with all Supports applied),
-   3. **Spoils** (land / title transfers).
-4. **Income.** Each land pays 1 gold; neutrals gain +1.
+   3. **Spoils** (land / title transfers),
+   4. **Develops.**
+5. **Income.** Each land pays 1 gold; neutrals gain +1.
 
-**Standing rule — gold is a table-talk currency.** Any player may give any amount of gold to any other player at any time, for any reason (bribes, tribute, war chests, apologies). Payments are real; promises never are. Gold already committed to an order this round is spent and cannot be gifted or reclaimed.
+**Standing rule — gold is a table-talk currency.** Any player may give any
+amount of gold to any other player at any time, for any reason (bribes, tribute,
+war chests, apologies). Payments are real; promises never are. Gold already
+committed to an order this round is spent and cannot be gifted or reclaimed.
 
 ---
 
@@ -61,10 +80,14 @@ One loop, four steps:
 
 Each player picks exactly one per round:
 
-- **Attack [target]** — commit any amount of gold (at least 1) as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
-- **Support [target]** — commit any amount of gold (at least 1). Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
+- **Attack [target]** — commit **1 to 6 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
+- **Support [target]** — commit **1 to 6 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
 - **Petition** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Petition is a **pardon** — pay 3 gold, jump directly to fealty 0. Because petitions resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
+
+**No order may carry more than 6 gold.** This is the rule that makes a
+usurpation a conspiracy: no purse alone outreaches the crown, so the throne has
+to be bought with somebody else's sword.
 
 ### Fealty consequences of attacking (by the target's band at resolution)
 
@@ -92,9 +115,13 @@ Attacker wins on **strictly greater**. Ties favor the defender (Herald breaks ti
 **Multiple attacks on one target** resolve independently against the same defense, in descending attack-strength order (Herald, then random, breaks ordering ties). Each successful attack takes its own spoils.
 
 ### Attacking the Crown (usurpation)
-- All players who attacked the Crown this round pool their strength (no punching-down bonuses apply). Crown defense = crown strength (4 + cards remaining) + any Support aimed at the Crown.
+- All players who attacked the Crown this round pool their strength (no punching-down bonuses apply). Crown defense = crown strength (§1) + any Support aimed at the Crown.
 - **If the coalition wins:** the **largest single contributor** takes the throne and wins the game immediately. Contribution tie = **civil war**: no one wins the round, and all conspirators are set to −3.
 - **If the coalition loses:** every attacker is set to −3 and forfeits one land to the Crown.
+
+Support aimed at someone attacking the Crown counts toward **that attacker's**
+strength. A bought sword crowns the buyer, not the seller — which is why funding
+somebody else's coup is a way of losing.
 
 ---
 
@@ -104,12 +131,13 @@ Resolved immediately on flip:
 
 | Card | Count | Effect |
 |---|---|---|
-| **Tax** | 4 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
-| **Levy** | 4 | Each player pays 2 gold to the Crown or drops 1 fealty. |
-| **Favor** | 3 | The single highest-fealty player takes one land from the neutral pool. Tie: no effect. |
+| **Tax** | 5 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
+| **Levy** | 4 | Each player pays 4 gold to the Crown or drops 1 fealty. |
+| **Favor** | 2 | The single highest-fealty player takes one land from the neutral pool. Tie: no effect. |
 | **Purge** | 1 | The single lowest-fealty player forfeits one land to the Crown. Tie: no effect. |
 
-Suggested tuning knob: seed one **Favor** into the first three flips so loyalty pays early and the table diverges fast.
+One **Favor** is seeded into the first three flips so loyalty pays early and the
+table diverges fast.
 
 ---
 
@@ -131,78 +159,61 @@ Granted at fealty thresholds (§2), kept forever, stealable only per §5.
 Two roads to the throne:
 
 1. **Usurp** — lead a successful attack on the Crown as its largest contributor (§5).
-2. **Inherit** — the crown deck runs out with no usurper. The highest-fealty player is crowned. Ties: most lands, then most gold.
+2. **Inherit** — the crown deck runs out with no usurper. The highest-fealty player is crowned. Ties: most lands, then most gold. Still tied: they rule together.
 
 ---
 
 ## 9. Optional Module: Ransom
 
-*Cut from the core four orders for simplicity; restore if the loyalist→outlaw dive feels missing.*
+*Off by default. Turn it on if the loyalist→outlaw dive feels missing.*
 
 - **Ransom [target]** (a fifth order, usable **once per game** per player) — Petition's mirror: trade standing down into gold. Steal 2 gold from the target. If the target is a favorite, drop 2 fealty (the crown protects its own). If the target is an outlaw, gain +1 fealty (bounty hunting). **Ransom the Crown:** gain 5 gold, set to −3.
 
 ---
 
-## 10. First-Playtest Watchlist
+## Appendix A: rulings
 
-- **Pardon pricing** — is 3 gold too cheap an escape hatch, making outlaws unpunishable? Tune price before removing the mechanic.
-- **Petition timing** — if pre-combat petitions make every round too swingy for everyone, scope the early timing to outlaw pardons only.
-- **Outlaw power** — if the shadow dominates, tune their tax rate or the pardon price, not the toolkit. If the shadow starves, drop outlaw tax to 2.
-- **Turtling** — once players learn attackers are exposed (walls 0), watch whether everyone stalls. The heir clock and Support-as-proxy-war should prevent it; confirm.
-- **Crown strength curve** — with uncapped commitments, the usurpation window is set by the table's total gold, not per-order limits. 4 + cards remaining targets a mid-game window around strength 8–10; adjust the constant if hoarded war chests open it too early or the tax drain keeps it shut too long.
-- **Uncapped gold + free transfers** — watch for a degenerate line where the table pools everything into one player's single overwhelming attack. The largest-contributor throne rule (gifted gold counts toward the *attacker's* contribution, not the donors') is the intended deterrent: funding someone's coup crowns *them*. Confirm that deters it in practice.
+Edges the rules above do not settle, and how this implementation resolves them.
 
----
-
-## Appendix A: the tuned constants
-
-v0.1's own §10 asks a first playtest to watch the crown-strength curve, the
-pardon price, the outlaw tax and whether hoarded war chests open the usurpation
-window too early. They do. This build ships two presets: **v0.1**, the sheet
-exactly as written, and **Tuned**, the default. The tuned changes:
-
-| Constant | v0.1 | Tuned |
-|---|---|---|
-| Crown strength | 4 + cards remaining | **6** + cards remaining |
-| Gold per order | uncapped (§10) / 1–3 (§3) | **at most 6** |
-| Tax by band | 1 / 2 / 3 | **2 / 3 / 4** |
-| Levy | 2 gold or 1 fealty | **4 gold** or 1 fealty |
-| Petition | 2 gold | **3 gold** |
-| Pardon | 3 gold | **4 gold** |
-| Crown deck | 4 Tax, 4 Levy, 3 Favor, 1 Purge | **5 Tax, 4 Levy, 2 Favor, 1 Purge** |
-
-Everything else is unchanged: walls of 2, the punching-down bonus, the standing
-cost of attacking each band, all six titles, land income, the neutral granary,
-and the starting position of 3 lands and 5 gold.
-
-The commitment cap is the biggest change and the one worth arguing about. §3
-says "a hidden gold commitment (1–3)" and §10 says commitments are uncapped;
-they cannot both be right. A cap of 6 sits between them, and it is what turns a
-usurpation into a conspiracy: crown strength never falls below 6, and the most
-one house can put behind a single attack is 6 (7 with the Marshal), so taking
-the throne means buying somebody else's support first. Support aimed at an
-attacker counts toward that attacker's strength, so the bought sword crowns the
-buyer — §10's own deterrent, now load-bearing.
-
-See the README for how these were chosen and what the numbers look like.
-
----
-
-## Appendix B: rulings this implementation makes
-
-v0.1 leaves a few edges undefined. The code resolves them as follows; each is a
-one-line change if you want it the other way.
-
-- **Support aimed at a player who both attacks and is attacked** joins their **attack** (their army is in the field). Otherwise it joins their defense.
-- **Develop** resolves **after spoils**, so a land settled this round cannot be looted the same round. If the neutral pool empties first (two players Develop for one remaining land), the player who misses out gets their 3 gold back.
-- **Ransom (§9)** resolves alongside petitions in step 3.1, and reads the target's band from the start of resolution.
-- **Commitment size** is uncapped (at least 1, at most your gold), following §10's "uncapped commitments" rather than the parenthetical "(1–3)" in §3.
+- **Support aimed at a player who both attacks and is attacked** joins their **attack** — their army is in the field. Otherwise it joins their defense.
+- **Develop resolves after spoils**, so a land settled this round cannot be looted the same round. If the neutral pool empties first (two players Develop for one remaining land), the player who misses out gets their gold back.
+- **Ransom (§9)** resolves alongside petitions, and reads the target's band from the start of resolution.
 - **A player who can afford no order may Hold**, doing nothing. It is not one of the four orders and is unavailable to anyone who can afford anything else.
-- **Table talk gets an explicit step** at the top of each round, before orders are sealed. §3 already allows gold to move at any time and deals to be struck at any time; the step exists so a bot has a moment to make and answer proposals, and so a human is asked. It changes no rule: gold moves for real, promises still bind nobody.
-- **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
-- **The size of a sealed commitment is hidden**, not just the order. Escrowed gold does not show on the board until the reveal, or players asked later in the round could read everyone else's war chest.
-- **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
 - **A civil war** (contribution tie among winning conspirators) voids only the coup. Attacks between houses in the same round still resolve.
 - **A failed coup** does not shelter the conspirator: their walls are still down for everyone else's attacks that round, and land lost to another house can leave nothing to forfeit to the Crown.
 - **Title exhaustion:** if all six titles are held when a player crosses +2 or +3, the grant stays pending rather than being burned.
-- **The change right** granted to another player is exercised immediately, before the reveal.
+- **The change right** given to another player is exercised immediately, before the reveal.
+- **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
+- **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
+- **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
+
+---
+
+## Appendix B: what changed from v0.1, and why
+
+The original sheet was written for four players with a crown of `4 + cards
+remaining`. Bot tournaments (README has the numbers) turned up three problems.
+
+**The crown deck almost never ran out.** The table out-earned the decaying crown
+by about round six and whoever hoarded hardest walked up and took the throne;
+inheritance, half the design, was decoration. Fixed by the 6-gold commitment cap
+— §3's own parenthetical "(1–3)" was closer to right than §10's "uncapped" — plus
+one Favor traded for one Tax.
+
+**The crown could not be too strong either.** Pushing its offset up to 8 shut
+the coup down, and with no coup a runaway favorite could not be deposed: nothing
+in the game lowers a rival's fealty. The first player to +3 then held the Herald
+and won every tie forever, taking 1.76× their share of games. At the offset
+above, that falls to about 1.4×. The coup is the check on the heir, and it has
+to stay live.
+
+**Player count has to reach the crown.** A flat offset made two-handed games 81%
+coups and six-handed games 45%, because a large table has more players free to
+shield the throne. Hence `(10 − players)`.
+
+Still open, and a rules question rather than a tuning one: **Marshal and Herald
+are worth about 1.4× the baseline while Warden, Spymaster and Chancellor sit
+below 1.0×.** Combat resolves on very small integers, so "+1 attack" and "win
+every tie" are worth far more than "+1 gold a round" or "−1 tax". The grant at
++2 is not really a choice yet. Rebalancing those four is the next thing worth
+doing, and it needs new title text rather than a different number.

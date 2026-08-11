@@ -165,8 +165,12 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
         const marshal = has(me, 'marshal') ? t.marshalBonus : 0;
         const punchDown = bandOf(me.fealty) === BAND.FAVORITE && target.fealty < me.fealty ? Math.round(me.fealty * t.punchDownScale) : 0;
         const need = Math.max(1, Math.ceil(estDef + 1 - marshal - punchDown));
-        for (const spend of new Set([need, need + 1, Math.min(ceiling, need + 2)])) {
-          if (spend < 1 || spend > ceiling) continue;
+        // Clamp rather than skip: a purse too thin to force the gate should
+        // still weigh a doomed raid against its alternatives. Skipping left
+        // bots whose only remaining candidate was a hopeless march on the
+        // Crown, which they then committed for want of anything else.
+        const spends = new Set([need, need + 1, need + 2].map((n) => Math.max(1, Math.min(ceiling, n))));
+        for (const spend of spends) {
           const strength = spend + marshal + punchDown;
           const pWin = winChance(strength, estDef);
           const fealtyDelta = t.attackFealty[bandOf(target.fealty)];
