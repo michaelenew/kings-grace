@@ -136,8 +136,8 @@ export function randomAsk(rng = Math.random) {
       }
       case 'proposeDeal': return 'null';
       case 'deal': return JSON.stringify({ accept: rng() < 0.4 });
-      case 'levy': return rng() < 0.5 ? '"pay"' : '"fealty"';
-      case 'title': return JSON.stringify(pick(request.available));
+      case 'levy': return rng() < 0.5 ? '"serve"' : '"refuse"';
+      case 'title': return JSON.stringify(pick([...request.available, ...(request.claimable || []).map((c) => c.title)]));
       case 'spoils': return JSON.stringify({ kind: 'land' });
       case 'peekChoice': return rng() < 0.5 ? '"order"' : '"card"';
       case 'peekTarget': return JSON.stringify(pick(request.options));

@@ -22,6 +22,18 @@ const TRAITS = {
 /** How hard a doctrine pulls a bot toward its lane, in score points. */
 const DOCTRINE_PULL = 7;
 
+/**
+ * What a title is worth to a bot, in roughly the same units as gold. Weighted
+ * by what a title actually does to a win rate, measured causally in
+ * tools/title-value.js rather than by how often title-holders happen to win.
+ */
+function TITLE_WORTH(id, view) {
+  const worth = {
+    marshal: 12, herald: 9, warden: 8, chancellor: 5, spymaster: 5, steward: 4 + view.deckCount * 0.3,
+  };
+  return worth[id] ?? 3;
+}
+
 const DOCTRINES = {
   // Plays the board. No lane.
   opportunist: {},
@@ -315,19 +327,38 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     return TITLES.filter((t) => !held.has(t.id)).map((t) => t.id);
   }
 
+  /**
+   * The levy asks for your host, not your purse. Serving costs you the round —
+   * no attack, and no walls, so anything you hold is open. Refusing costs
+   * standing, which is the whole inheritance race.
+   */
   function chooseLevy(request, view) {
     const me = view.players.find((p) => p.id === view.me);
-    if (me.fealty <= -3) return 'fealty'; // the drop costs nothing at the floor
-    if (me.gold < request.cost) return 'fealty';
+    const drop = request.refusalCost ?? 2;
+    const lost = me.fealty - clampFealty(me.fealty - drop);
+    if (lost === 0) return 'refuse'; // at the floor, refusing is free
+
     const lateness = 1 - view.deckCount / Math.max(1, view.deckStart ?? 12);
-    const fealtyWorth = (3 + 20 * lateness) * (doctrine.levyPay ?? 1);
-    const goldWorth = request.cost * 0.55 * traits.greed + (me.gold <= request.cost + 1 ? 4 : 0);
-    const laneStillOn = view.deckCount > 0.45 * (view.deckStart ?? 12);
-    if (doctrine.wantBand === BAND.OUTLAW && me.fealty > -2 && laneStillOn) return 'fealty';
-    if (doctrine.wantBand === BAND.NEUTRAL && me.fealty <= -1) return 'pay';
-    // Diving to outlaw is a real strategy for the treacherous.
-    if (!doctrine.wantBand && traits.treachery > 0.9 && me.fealty <= 0 && view.deckCount > 4) return 'fealty';
-    return fealtyWorth > goldWorth ? 'pay' : 'fealty';
+    let serveWorth = lost * (2 + 9 * lateness) * (doctrine.levyPay ?? 1);
+    // Falling out of the band you are playing for costs more than the steps.
+    const after = bandOf(clampFealty(me.fealty - drop));
+    if (doctrine.wantBand && after !== doctrine.wantBand && bandOf(me.fealty) === doctrine.wantBand) serveWorth += 7;
+    if (after === BAND.OUTLAW && bandOf(me.fealty) !== BAND.OUTLAW && doctrine.wantBand !== BAND.OUTLAW) serveWorth += 5;
+    // A grant you have not spent yet is worth staying up for.
+    if (me.fealty >= 2 && !me.titleGrants?.[me.fealty >= 3 ? 3 : 2]) serveWorth += 6;
+
+    // What an army is worth this round: the strike you cannot make, and the
+    // coronet you cannot defend.
+    let refuseWorth = 2.2 * traits.aggression * (doctrine.attack ?? 1);
+    refuseWorth += me.titles.reduce((a, t) => a + (TITLE_WORTH(t, view) > 8 ? 3 : 1.5), 0);
+    refuseWorth += Math.min(3, me.lands * 0.5);
+    // Nobody is coming for a pauper's gate.
+    const predators = view.players.filter((p) => p.id !== me.id && p.gold >= 3).length;
+    if (predators === 0) refuseWorth *= 0.4;
+
+    if (doctrine.wantBand === BAND.OUTLAW && me.fealty > -2) return 'refuse';
+    if (!doctrine.wantBand && traits.treachery > 0.9 && me.fealty <= 0 && view.deckCount > 4) return 'refuse';
+    return serveWorth >= refuseWorth ? 'serve' : 'refuse';
   }
 
   function chooseTitle(request, view) {
@@ -337,22 +368,26 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     if (traits.aggression > 1.2 || doctrine.attack > 1.4) pref.unshift('marshal');
     if (bandOf(me.fealty) === BAND.OUTLAW || doctrine.wantBand === BAND.OUTLAW) pref.unshift('chancellor');
     if (doctrine.support > 1.4) pref.unshift('warden');
-    return pref.find((t) => request.available.includes(t)) || request.available[0];
+    const rank = (t) => {
+      const i = pref.indexOf(t);
+      return i === -1 ? pref.length : i;
+    };
+    const free = request.available.slice().sort((a, b) => rank(a) - rank(b))[0];
+    const taken = (request.claimable || []).map((c) => c.title).sort((a, b) => rank(a) - rank(b))[0];
+    if (!taken) return free;
+    if (!free) return taken;
+    // Taking one off somebody costs coin and makes an enemy, so it has to be a
+    // real upgrade rather than a marginal one.
+    const gap = TITLE_WORTH(taken, view) - TITLE_WORTH(free, view);
+    const cost = request.claimCost ?? 2;
+    return gap > cost * (1.4 / Math.max(0.4, traits.treachery)) ? taken : free;
   }
 
   function chooseSpoils(request, view) {
     const loser = view.players.find((p) => p.id === request.loser);
-    // Weighted by what a title is actually worth, measured causally in
-    // tools/title-value.js rather than by how often title-holders win. The old
-    // numbers here were low enough that a bot took land essentially every time
-    // and titles were stolen 0.06 times a game, which left the whole
-    // steal-it-back dynamic untested.
-    const worth = {
-      marshal: 12, herald: 9, warden: 8, chancellor: 5, spymaster: 5, steward: 4 + view.deckCount * 0.3,
-    };
-    const bestTitle = request.titles.slice().sort((a, b) => (worth[b] || 3) - (worth[a] || 3))[0];
+    const bestTitle = request.titles.slice().sort((a, b) => TITLE_WORTH(b, view) - TITLE_WORTH(a, view))[0];
     const landWorth = 1.4 + 0.75 * view.deckCount * (view.tuning?.landIncome ?? 1);
-    if (request.landsAvailable === false || (worth[bestTitle] || 3) > landWorth) {
+    if (request.landsAvailable === false || TITLE_WORTH(bestTitle, view) > landWorth) {
       return { kind: 'title', title: bestTitle };
     }
     if (loser && loser.lands <= 0) return { kind: 'title', title: bestTitle };

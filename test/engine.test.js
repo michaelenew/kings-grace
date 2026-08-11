@@ -85,31 +85,55 @@ test('tax charges by band, Chancellor pays 1 less, and nobody pays what they lac
   assert.equal(g.state.crownGold, 1 + 2 + 2 + 1);
 });
 
-test('levy: pay the demand or drop a fealty, and the poor have no choice', async () => {
+test('levy: serve and lose your army for the round, or refuse and lose standing', async () => {
   const g = makeGame({
     controllers: {
-      p0: { levy: 'pay' },
-      p1: { levy: 'fealty' },
-      p3: { levy: 'pay' },
+      p0: { levy: 'serve' },
+      p1: { levy: 'refuse' },
+      p2: { levy: 'refuse' },
+      p3: { levy: 'serve' },
     },
   });
-  const levy = g.state.tuning.levyCost;
-  set(g.state, 'p2', { gold: levy - 1 }); // cannot pay
-  set(g.state, 'p3', { fealty: -3 });
+  const drop = g.state.tuning.levyRefusal;
+  set(g.state, 'p1', { fealty: 1 });
+  set(g.state, 'p2', { fealty: 0 });
+  const goldBefore = get(g.state, 'p0').gold;
   await g.resolveLevy();
-  assert.equal(get(g.state, 'p0').gold, RULES.startGold - levy);
-  assert.equal(get(g.state, 'p1').fealty, -1);
-  assert.equal(get(g.state, 'p2').gold, levy - 1, 'the poor pay nothing');
-  assert.equal(get(g.state, 'p2').fealty, -1);
-  assert.equal(get(g.state, 'p3').gold, RULES.startGold - levy);
+  assert.equal(get(g.state, 'p0').noArmy, true);
+  assert.equal(get(g.state, 'p0').gold, goldBefore, 'the levy asks for troops, not coin');
+  assert.equal(get(g.state, 'p1').fealty, 1 - drop, 'refusing from +1 leaves you neutral');
+  assert.equal(bandOf(get(g.state, 'p1').fealty), 'neutral');
+  assert.equal(bandOf(get(g.state, 'p2').fealty), 'outlaw', 'refusing from 0 makes you an outlaw');
+  assert.equal(get(g.state, 'p1').noArmy, false, 'a refuser keeps their army');
 });
 
-test('levy at the floor of the track costs nothing', async () => {
-  const g = makeGame({ controllers: { p0: { levy: 'fealty' } } });
+test('answering the levy takes your walls down and your attack away', async () => {
+  const g = makeGame({ controllers: { p0: { levy: 'serve' }, p1: { levy: 'refuse' } } });
+  await g.resolveLevy();
+  const served = get(g.state, 'p0');
+  assert.equal(g.defenseOf('p0', { toDefense: {} }).def, 0, 'no walls');
+  assert.equal(g.defenseOf('p0', { toDefense: {} }).wallsDown, true, 'so a title is exposed');
+  assert.ok(!legalOrders(g.state, served).includes(ORDER.ATTACK), 'and no attack');
+  assert.ok(legalOrders(g.state, served).includes(ORDER.SUPPORT), 'but gold still travels');
+  assert.equal(g.defenseOf('p1', { toDefense: {} }).def, g.state.tuning.walls);
+});
+
+test('a host called up last round is home again for this one', async () => {
+  const g = makeGame({ controllers: { p0: { levy: 'serve' } } });
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p0').noArmy, true);
+  await g.crownFlip();
+  assert.ok(get(g.state, 'p0').noArmy === true || g.state.lastCard !== 'levy',
+    'only a fresh levy may set it again');
+  if (g.state.lastCard !== 'levy') assert.equal(get(g.state, 'p0').noArmy, false);
+});
+
+test('levy at the floor of the track costs nothing to refuse', async () => {
+  const g = makeGame({ controllers: { p0: { levy: 'refuse' } } });
   set(g.state, 'p0', { fealty: -3, gold: 5 });
   await g.resolveLevy();
   assert.equal(get(g.state, 'p0').fealty, -3);
-  assert.equal(get(g.state, 'p0').gold, 5);
+  assert.equal(get(g.state, 'p0').noArmy, false);
 });
 
 test('favor pays every favorite, and land only at the top of the track', () => {
@@ -140,7 +164,7 @@ test('favor still pays gold when no land remains', () => {
 });
 
 test('the optional levy seizes land from outlaws instead of coin', async () => {
-  const g = makeGame({ options: { levyTargetsOutlaws: true }, controllers: { p0: { levy: 'pay' } } });
+  const g = makeGame({ options: { levyTargetsOutlaws: true }, controllers: { p0: { levy: 'serve' } } });
   set(g.state, 'p1', { fealty: -2, lands: 3 });
   set(g.state, 'p2', { fealty: -3, lands: 3 });
   set(g.state, 'p3', { fealty: -3, lands: 1 });
@@ -154,10 +178,18 @@ test('the optional levy seizes land from outlaws instead of coin', async () => {
 });
 
 test('without the option, outlaws face the same levy as everyone', async () => {
-  const g = makeGame({ controllers: { p1: { levy: 'fealty' } } });
+  const g = makeGame({ controllers: { p1: { levy: 'refuse' } } });
   set(g.state, 'p1', { fealty: -2, lands: 3 });
   await g.resolveLevy();
   assert.equal(get(g.state, 'p1').lands, 3);
+});
+
+test('an outlaw whose land is seized keeps their army', async () => {
+  const g = makeGame({ options: { levyTargetsOutlaws: true } });
+  set(g.state, 'p1', { fealty: -2, lands: 3 });
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p1').noArmy, false, 'a levy round is the outlaws’ hour');
+  assert.ok(legalOrders(g.state, get(g.state, 'p1')).includes(ORDER.ATTACK));
 });
 
 // -------------------------------------------------------------- orders (§4)
@@ -399,6 +431,41 @@ test('petitioning to +2 grants a title in time to use it that same round', async
   await g.resolvePhase();
   assert.deepEqual(get(g.state, 'p0').titles, ['marshal']);
   assert.equal(get(g.state, 'p0').titleGrants[2], true);
+});
+
+test('a grant may be spent taking a title somebody already holds, for coin', async () => {
+  const g = makeGame({ controllers: { p0: { title: 'herald' } } });
+  const cost = g.state.tuning.titleClaimCost;
+  set(g.state, 'p1', { titles: ['herald'] });
+  set(g.state, 'p0', { fealty: 2, gold: 4 });
+  const crownBefore = g.state.crownGold;
+  await g.grantTitles();
+  assert.deepEqual(get(g.state, 'p0').titles, ['herald'], 'the coronet changes hands');
+  assert.deepEqual(get(g.state, 'p1').titles, [], 'and the holder is left with nothing');
+  assert.equal(get(g.state, 'p0').gold, 4 - cost, 'paid for');
+  assert.equal(g.state.crownGold, crownBefore + cost, 'to the Crown');
+  assert.equal(get(g.state, 'p0').titleGrants[2], true, 'and it spends the grant');
+});
+
+test('a claim on a held title is out of reach without the gold', async () => {
+  const g = makeGame({ controllers: { p0: { title: (r) => r.available[0] ?? r.claimable[0]?.title } } });
+  const cost = g.state.tuning.titleClaimCost;
+  // Every title spoken for, so a claim is the only way to one at all.
+  const all = ['marshal', 'herald', 'warden', 'chancellor', 'spymaster', 'steward'];
+  set(g.state, 'p1', { titles: all.slice(0, 3) });
+  set(g.state, 'p2', { titles: all.slice(3) });
+  set(g.state, 'p0', { fealty: 2, gold: cost - 1 });
+  await g.grantTitles();
+  assert.deepEqual(get(g.state, 'p0').titles, []);
+  assert.equal(get(g.state, 'p0').titleGrants[2], false, 'the grant is not burned on nothing');
+});
+
+test('you cannot claim a title you already hold', async () => {
+  const g = makeGame({ controllers: { p0: { title: (r) => r.claimable.map((c) => c.title) } } });
+  set(g.state, 'p0', { fealty: 2, gold: 9, titles: ['marshal'] });
+  await g.grantTitles();
+  const claimed = get(g.state, 'p0').titles;
+  assert.equal(new Set(claimed).size, claimed.length, 'no house holds the same coronet twice');
 });
 
 test('each fealty threshold grants a title only once, ever', async () => {

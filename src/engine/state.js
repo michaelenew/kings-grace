@@ -64,6 +64,8 @@ export function createGame(opts = {}) {
     titleGrants: { 2: false, 3: false }, // "first time you reach" flags (§2)
     ransomUsed: false,
     escrow: 0,
+    /** Set for the round when this house answers a levy: no walls, no attack. */
+    noArmy: false,
     /** Turncoat tokens: earned in the shadow, spendable or tradeable (§2). */
     turncoat: 0,
   }));
@@ -114,6 +116,19 @@ export function unclaimedTitles(state) {
 }
 
 /**
+ * Titles this player could take off somebody else with their grant, and what
+ * it would cost. The King gives what he has already given, but he does not
+ * want to make enemies of his friends, so the claim is paid for.
+ */
+export function claimableTitles(state, player) {
+  const cost = state.tuning.titleClaimCost;
+  if (player.gold < cost) return [];
+  return state.players
+    .filter((p) => p.id !== player.id)
+    .flatMap((p) => p.titles.map((title) => ({ title, holder: p.id, holderName: p.name, cost })));
+}
+
+/**
  * Crown strength = base + per-player x players + cards remaining.
  *
  * The per-player term is what lets the game run 2-6 handed: a bigger table can
@@ -135,7 +150,8 @@ export function commitCeiling(state, player) {
 /** §4 — which orders this player can legally commit right now. */
 export function legalOrders(state, player) {
   const out = [];
-  if (player.gold >= 1) out.push(ORDER.ATTACK, ORDER.SUPPORT);
+  if (player.gold >= 1 && !player.noArmy) out.push(ORDER.ATTACK);
+  if (player.gold >= 1) out.push(ORDER.SUPPORT);
   if (player.gold >= petitionCostFor(state, player)) out.push(ORDER.PETITION);
   if (player.gold >= state.tuning.developCost && state.neutralPool > 0) out.push(ORDER.DEVELOP);
   if (state.options.ransom && !player.ransomUsed) out.push(ORDER.RANSOM);

@@ -27,7 +27,7 @@ export function referenceCard(tuning, players) {
 
     block('Standing', [
       el('p', { class: 'ref-line dim' }, 'Fealty runs −3 to +3. Appeal to climb; refuse a levy, strike a favorite, or raise a hand against the Crown to fall.'),
-      line(`${BAND_LABEL.favorite} (+2, +3)`, 'Attacks gain +fealty against anyone lower — never against the Crown. A title at +2 and another at +3, once each, kept forever.'),
+      line(`${BAND_LABEL.favorite} (+2, +3)`, `Attacks gain +fealty against anyone lower — never against the Crown. A title at +2 and another at +3, once each. The grant may take a title somebody already holds, for ${tuning.titleClaimCost} gold.`),
       line(`${BAND_LABEL.neutral} (−1 to +1)`, `+${tuning.neutralIncome} gold every income step. Nobody is watching your fields.`),
       line(`${BAND_LABEL.outlaw} (−2, −3)`, 'Take a turncoat token as the round opens — sell it, or spend it at the whispers step to change your sealed order. Peek before the reveal. Taxed hardest.'),
     ]),
@@ -39,8 +39,12 @@ export function referenceCard(tuning, players) {
       line('Develop', `${tuning.developCost} gold for one land. Land pays ${tuning.landIncome} gold a round.`),
     ]),
 
+    block('The levy', [
+      el('p', { class: 'ref-line dim' }, `Send your host and your army marches for the Crown: no walls and no attack this round, so a land — or a title — can be taken off you. Refuse and drop ${tuning.levyRefusal} fealty. At +1 you can refuse and still be neutral; from 0 the same refusal makes you an outlaw.`),
+    ]),
+
     block('Combat', [
-      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you also attacked) + support + Warden. Attacker needs strictly more. Spoils: a land, or a title if their walls were down.`),
+      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you attacked or answered the levy) + support + Warden. Attacker needs strictly more. Spoils: a land, or a title if their walls were down.`),
     ]),
 
     block('Winning', [

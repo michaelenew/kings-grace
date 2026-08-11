@@ -14,8 +14,8 @@ export function stub(map = {}) {
       if (entry !== undefined) return typeof entry === 'function' ? entry(request, view) : entry;
       switch (request.type) {
         case 'order': return { order: request.legal[0], gold: 1, target: null };
-        case 'levy': return 'pay';
-        case 'title': return request.available[0];
+        case 'levy': return 'serve';
+        case 'title': return request.available[0] ?? request.claimable[0]?.title;
         case 'spoils': return { kind: 'land' };
         case 'peekChoice': return 'order';
         case 'peekTarget': return request.options[0];

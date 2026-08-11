@@ -12,7 +12,7 @@ import {
 } from './constants.js';
 import {
   commitCeiling, createGame, crownStrength, hasTitle, legalOrders, petitionCostFor,
-  playerById, unclaimedTitles, viewFor,
+  claimableTitles, playerById, unclaimedTitles, viewFor,
 } from './state.js';
 
 const seatOrder = (state) => state.players.slice().sort((a, b) => a.seat - b.seat);
@@ -126,6 +126,8 @@ export class Game {
   async crownFlip() {
     const s = this.state;
     this.setPhase('crownFlip');
+    // A host called up last round is home again before this one is called.
+    for (const p of s.players) p.noArmy = false;
     const card = s.deck.shift();
     s.discard.push(card);
     s.lastCard = card;
@@ -150,14 +152,24 @@ export class Game {
     }
   }
 
+  /**
+   * The levy calls up your host. Serve and your army marches under the royal
+   * banner — you have no walls and no attack this round, and a house with no
+   * walls can be stripped of a title, not merely a land. Refuse and the court
+   * remembers it.
+   *
+   * This resolves at the royal card, before orders are sealed, so who is
+   * defenceless is public knowledge when everyone chooses their target. That is
+   * deliberate: the window has to be visible to be worth bargaining over.
+   */
   async resolveLevy() {
     const s = this.state;
+    const drop = s.tuning.levyRefusal;
     for (const p of seatOrder(s)) {
-      let choice;
-      const levy = s.tuning.levyCost;
       // Optional rule: the levy falls on the outlaws as a seizure of land
-      // rather than a demand for coin. They are not being taxed, they are
-      // being made an example of.
+      // rather than a call for troops. They are not being asked, they are being
+      // made an example of — and they keep their army, which makes a levy round
+      // the outlaws' hour.
       if (s.options.levyTargetsOutlaws && bandOf(p.fealty) === BAND.OUTLAW) {
         const due = p.fealty <= -3 ? 2 : 1;
         const taken = Math.min(due, p.lands);
@@ -169,25 +181,20 @@ export class Game {
           : `Levy: ${p.name} has no land left for the Crown to seize.`);
         continue;
       }
-      if (p.gold < levy) {
-        choice = 'fealty';
-      } else {
-        choice = await this.ask(p.id, {
-          type: 'levy',
-          cost: levy,
-          text: `Pay ${levy} gold to the Crown, or drop 1 fealty.`,
-        });
-        if (choice !== 'pay' && choice !== 'fealty') choice = 'fealty';
-      }
-      if (choice === 'pay') {
-        p.gold -= levy;
-        this.state.crownGold += levy;
-        this.emit('levy', `${p.name} pays the levy: ${levy} gold.`);
+      let choice = await this.ask(p.id, {
+        type: 'levy',
+        refusalCost: drop,
+        text: `Send your host — no walls and no attack this round — or refuse and drop ${drop} fealty.`,
+      });
+      if (choice !== 'serve' && choice !== 'refuse') choice = 'refuse';
+      if (choice === 'serve') {
+        p.noArmy = true;
+        this.emit('levy', `${p.name} answers the levy. Their host marches for the Crown — no walls, no attack this round.`);
       } else {
         const before = p.fealty;
-        p.fealty = clampFealty(p.fealty - 1);
+        p.fealty = clampFealty(p.fealty - drop);
         const note = p.fealty === before ? ' (already at the bottom of the track)' : '';
-        this.emit('levy', `${p.name} refuses the levy and loses standing${note}.`);
+        this.emit('levy', `${p.name} refuses the levy: ${fmt(p.fealty)}${note}.`);
       }
     }
   }
@@ -596,7 +603,9 @@ export class Game {
     const s = this.state;
     const p = this.player(pid);
     const c = s.commitments[pid];
-    const inTheField = c && c.order === ORDER.ATTACK;
+    // Two ways to have no walls: your army is out attacking, or it is out
+    // serving the Crown's levy. The gate is open either way.
+    const inTheField = !!(c && c.order === ORDER.ATTACK) || !!p.noArmy;
     let def = inTheField ? 0 : s.tuning.walls;
     def += support.toDefense[pid] || 0;
     if (hasTitle(p, 'warden')) def += s.tuning.wardenBonus;
@@ -791,7 +800,15 @@ export class Game {
     }
   }
 
-  /** §2 — title grants at +2 and +3, once each per player, ever. */
+  /**
+   * §2 — title grants at +2 and +3, once each per player, ever.
+   *
+   * A grant may be spent on a title somebody already holds, for
+   * `titleClaimCost` gold to the Crown. That is what keeps a coronet from
+   * being a thing you bank: the first house to +3 does not stand alone with the
+   * Herald, because the next house to +3 can simply ask for it. No sword
+   * required, but it costs coin and it makes an enemy of a friend.
+   */
   async grantTitles() {
     const s = this.state;
     const claimants = seatOrder(s).filter((p) => (p.fealty >= 2 && !p.titleGrants[2]) || (p.fealty >= 3 && !p.titleGrants[3]));
@@ -800,19 +817,34 @@ export class Game {
       for (const threshold of [2, 3]) {
         if (p.fealty < threshold || p.titleGrants[threshold]) continue;
         const available = unclaimedTitles(s);
-        if (available.length === 0) {
-          this.emit('title', `${p.name} has earned a title, but all six are spoken for.`);
+        const claimable = claimableTitles(s, p);
+        if (available.length === 0 && claimable.length === 0) {
+          this.emit('title', `${p.name} has earned a title, but all six are spoken for${p.gold < s.tuning.titleClaimCost ? ` and a claim on one costs ${s.tuning.titleClaimCost} gold` : ''}.`);
           continue;
         }
         const answer = await this.ask(p.id, {
           type: 'title',
           available,
+          claimable,
+          claimCost: s.tuning.titleClaimCost,
           threshold,
         });
-        const chosen = available.includes(answer) ? answer : available[0];
+        const claim = claimable.find((c) => c.title === answer);
+        const chosen = available.includes(answer) ? answer
+          : claim ? answer
+            : (available[0] ?? claimable[0].title);
+        const taking = available.includes(chosen) ? null : claimable.find((c) => c.title === chosen);
+        if (taking) {
+          const holder = this.player(taking.holder);
+          holder.titles = holder.titles.filter((t) => t !== chosen);
+          p.gold -= taking.cost;
+          s.crownGold += taking.cost;
+          this.emit('title', `${p.name} claims the title of ${TITLE_BY_ID[chosen].name} from ${holder.name}, and pays the Crown ${taking.cost} gold to soothe the slight.`);
+        } else {
+          this.emit('title', `${p.name} is named ${TITLE_BY_ID[chosen].name}.`);
+        }
         p.titles.push(chosen);
         p.titleGrants[threshold] = true;
-        this.emit('title', `${p.name} is named ${TITLE_BY_ID[chosen].name}.`);
       }
     }
   }

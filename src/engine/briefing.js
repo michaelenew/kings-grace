@@ -88,9 +88,21 @@ export function requestBriefing(request, view) {
         'Answer: {"accept":true|false}',
       ].join('\n');
     case 'levy':
-      return `The levy: pay ${request.cost} gold or drop 1 fealty. Answer: "pay" or "fealty"`;
-    case 'title':
-      return `You have reached +${request.threshold}. Choose a title, kept forever unless taken in the field: ${request.available.join(', ')}. Answer: "<title id>"`;
+      return [
+        'The levy calls up your host.',
+        'Serve and your army marches for the Crown: no walls and no attack this round, so a land — or a title — can be taken off you.',
+        `Refuse and you drop ${request.refusalCost} fealty.`,
+        'Answer: "serve" or "refuse"',
+      ].join('\n');
+    case 'title': {
+      const claims = (request.claimable || []).map((c) => `${c.title} (held by ${c.holderName}, costs ${c.cost} gold)`);
+      return [
+        `You have reached +${request.threshold}. Choose a title.`,
+        request.available.length ? `Unclaimed: ${request.available.join(', ')}.` : 'Nothing is unclaimed.',
+        claims.length ? `You may also take one already held: ${claims.join('; ')}.` : '',
+        'Answer: "<title id>"',
+      ].filter(Boolean).join('\n');
+    }
     case 'spoils':
       return `You broke through. Take a land, or one of their titles (${request.titles.join(', ')}). Answer: {"kind":"land"} or {"kind":"title","title":"<id>"}`;
     case 'peekChoice':
@@ -122,7 +134,11 @@ be the largest single contributor to a successful attack on the Crown.
 Things that catch people out:
 - Standing settles before the swords. An appeal or pardon this round changes your
   band before combat is worked out.
-- Attacking drops your OWN walls to zero, so your titles can be taken.
+- Attacking drops your OWN walls to zero, so your titles can be taken. Answering
+  the Crown's levy does the same thing, and everyone can see who answered before
+  they choose their target.
+- A title granted at +2 or +3 may be spent on one somebody already holds, for a
+  few gold to the Crown. No coronet is safe just because it is yours.
 - Support aimed at someone attacking the Crown counts toward THEIR contribution.
   Buying somebody's coup crowns them, not you.
 - No order carries more than the commitment cap, so no purse alone outreaches the
@@ -142,8 +158,11 @@ export function parseDecision(text, request) {
       value = trimmed.replace(/^"|"$/g, '');
     }
   }
-  if (request.type === 'levy') return value === 'pay' ? 'pay' : 'fealty';
-  if (request.type === 'title') return typeof value === 'string' ? value : request.available[0];
+  if (request.type === 'levy') return value === 'serve' ? 'serve' : 'refuse';
+  if (request.type === 'title') {
+    if (typeof value === 'string') return value;
+    return request.available[0] ?? request.claimable?.[0]?.title;
+  }
   if (request.type === 'peekChoice') return value === 'card' ? 'card' : 'order';
   if (request.type === 'peekTarget') return typeof value === 'string' ? value : request.options[0];
   return value;

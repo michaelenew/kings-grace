@@ -49,8 +49,8 @@ export function cardText(card, tuning, options = null) {
     case CARD.TAX:
       return `Favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}. Chancellor pays ${t.chancellorRelief} less (min 0).`;
     case CARD.LEVY:
-      return `Each player pays ${t.levyCost} gold to the Crown or drops 1 fealty.`
-        + (options?.levyTargetsOutlaws ? ' Outlaws instead forfeit land: one at −2, two at −3.' : '');
+      return `Send your host — no walls and no attack this round — or refuse and drop ${t.levyRefusal} fealty.`
+        + (options?.levyTargetsOutlaws ? ' Outlaws are not asked: the Crown seizes land instead, one at −2, two at −3.' : '');
     case CARD.FAVOR:
       return `Every favorite is paid ${t.favorGold} gold, and those at +${t.favorLandAt} take a land from the neutral pool as well.`;
     default:
@@ -58,7 +58,7 @@ export function cardText(card, tuning, options = null) {
   }
 }
 
-/** Titles (§7). Six unique, granted at fealty thresholds, stealable in combat. */
+/** Titles (§7). Six unique, granted at fealty thresholds, taken by coin or sword. */
 export const TITLES = [
   { id: 'marshal', name: 'Marshal', text: '+1 to your attack strength.' },
   { id: 'warden', name: 'Warden', text: '+1 to your defense.' },

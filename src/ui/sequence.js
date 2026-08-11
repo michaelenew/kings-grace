@@ -10,7 +10,7 @@ export const STAGES = [
     id: 'crownFlip',
     label: 'The royal card',
     phases: ['crownFlip'],
-    detail: 'Turn the top card of the royal deck and resolve it at once — a tax, a levy, or a favour paid to the loyal. Outlaws take their turncoat token now, and can bargain with it for the rest of the round. Everything after this happens knowing what the Crown just did.',
+    detail: 'Turn the top card of the royal deck and resolve it at once — a tax, a levy, or a favour paid to the loyal. A levy asks for your host: serve and you have no walls and no attack this round, refuse and you lose standing, and the whole table sees which you chose before anyone picks a target. Outlaws take their turncoat token now, and can bargain with it for the rest of the round.',
   },
   {
     id: 'commit',

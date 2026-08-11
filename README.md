@@ -14,7 +14,7 @@ served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 72 rules, bot and balance tests
+npm test                   # 79 rules, bot and balance tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 
@@ -26,8 +26,13 @@ bots. One human against three bots is the default; all-human is hot seat, with a
 
 Three things are worth knowing before your first game:
 
-- **Attacking drops your own walls to zero.** An army in the field cannot hold a
-  gate, and a defender with no walls can have a *title* taken, not just a land.
+- **Attacking drops your own walls to zero,** and so does answering the Crown's
+  levy. An army in the field cannot hold a gate, and a defender with no walls can
+  have a *title* taken, not just a land. The levy resolves before orders are
+  sealed, so everyone can see whose gate is open before they pick a target.
+- **A title is not yours to keep.** A grant at +2 or +3 can be spent on one
+  somebody already holds, for 2 gold to the Crown. The first house to the Herald
+  does not get to sit on it.
 - **No order may carry more than 9 gold.** You cannot buy the throne out of your
   own purse. A usurpation needs somebody else's sword — and support aimed at an
   attacker counts toward *their* strength, so a bought sword crowns the buyer.
@@ -65,10 +70,10 @@ Where it lands, across 600 games per table size:
 
 | Players | Ends in usurpation | Mean ending round (of 12) | Battles/game |
 |---|---|---|---|
-| 3 | 38% | 11.8 | 4.7 |
-| 4 | 41% | 11.9 | 5.9 |
-| 5 | 42% | 12.0 | 7.2 |
-| 6 | 31% | 12.0 | 8.0 |
+| 3 | 28% | 11.8 | 3.3 |
+| 4 | 39% | 11.7 | 4.3 |
+| 5 | 31% | 11.6 | 5.2 |
+| 6 | 28% | 11.7 | 5.8 |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
 size. Both roads to the throne stay open at every table size, which is the
@@ -80,18 +85,30 @@ headline the constants were chosen for.
 baseline" measures a correlation: titles are granted at +2 and +3, so their
 holders are the houses already climbing. `tools/title-value.js` runs the causal
 version — gift one title at setup, play the identical game with the same seed
-and the same bots, compare — and the effect is far smaller and far flatter:
+and the same bots, compare — and the effect was far smaller even before titles
+could be taken: +11.8pt for the Marshal rather than a multiple of the baseline.
 
-| | Marshal | Herald | Warden | Chancellor | Spymaster | Steward |
+**Then a title stopped being a thing you could bank, and the numbers collapsed
+again.** Answering the Crown's levy now puts your walls down in public, and a
+grant at +2 or +3 can be spent claiming a coronet somebody already wears. A
+coronet changes hands about 2.5 times a game where it used to change hands 0.06
+times. Re-measured over the same 400 seeds:
+
+| | Warden | Herald | Marshal | Steward | Chancellor | Spymaster |
 |---|---|---|---|---|---|---|
-| Win rate over a 26.5% baseline | +11.8pt | +7.2pt | +6.5pt | +2.0pt | +1.3pt | −0.2pt |
+| Win rate over a 23.5% baseline | +4.0pt | +3.8pt | +3.3pt | +0.8pt | −0.3pt | −1.3pt |
+| Still yours at the end | 76% | 44% | 29% | 94% | 83% | 99% |
 
-**Titles almost never change hands: 0.06 steals per game.** You can only take a
-title from a house whose walls were down, meaning one that attacked this round,
-and title-holders are favorites who rarely attack. So the counterweight the
-design intends — an advantage becomes your opponent's the moment it is stolen,
-and defending it costs you the land and gold you were not building — is
-currently unreachable. That is the thing worth fixing, not the titles' numbers.
+The second row is the interesting one. Nobody bothers taking the Spymaster and
+nobody is allowed to keep the Marshal — the table prices a title by how long you
+get to hold it, and no title's text was touched to make that happen. The whole
+spread narrowed from about 12 points to about 5.
+
+**Theft in the field is still rare, though: 0.06 a game.** The levy opens the
+gate and the bots do not walk through it, because striking a favorite costs 2
+fealty and a bot will not pay that to rob a house it was not already fighting.
+Every coronet that moves, moves by claim. Whether people play it that way is
+exactly what the bots cannot tell you.
 
 **Being a favorite ought to be dangerous, and against these bots it is not.**
 Favor pays every favorite, which makes climbing lucrative, and the bots let it
@@ -131,6 +148,12 @@ back with exactly one entry.
 *Everyone could read the next royal card.* The peeked-card field fell back to
 the real top of the deck once orders were revealed, so an outlaw's peek leaked
 to the whole table every round.
+
+*The starvation metric counted the wrong thing.* It flagged any turn offering
+two orders or fewer, so once the levy started taking the Attack order away it
+read 15% starved — of houses who were, in fact, rich. Being short of coin is
+starvation; having your host away with the Crown is a choice. It now measures
+whether you can afford an appeal or a develop, and reads 1%.
 
 ### What the numbers do not cover
 

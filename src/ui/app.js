@@ -59,7 +59,8 @@ const KNOBS = [
   { key: 'petitionCost', label: 'Petition cost' },
   { key: 'pardonCost', label: 'Pardon cost (outlaws)' },
   { key: 'developCost', label: 'Develop cost' },
-  { key: 'levyCost', label: 'Levy demand' },
+  { key: 'levyRefusal', label: 'Fealty lost refusing a levy' },
+  { key: 'titleClaimCost', label: 'Gold to claim a held title' },
   { key: 'walls', label: 'Walls' },
 ];
 
@@ -764,7 +765,8 @@ function orderChoices(s, me, request) {
   return orders.map((order) => {
     if (legal.includes(order)) return { order, ok: true };
     let why = 'not available this round';
-    if (order === ORDER.ATTACK || order === ORDER.SUPPORT) why = `needs at least 1 gold, you hold ${me.gold}`;
+    if (order === ORDER.ATTACK && me.noArmy) why = 'your host is marching for the Crown this round';
+    else if (order === ORDER.ATTACK || order === ORDER.SUPPORT) why = `needs at least 1 gold, you hold ${me.gold}`;
     else if (order === ORDER.PETITION) why = `costs ${request.petitionCost} gold, you hold ${me.gold}`;
     else if (order === ORDER.DEVELOP) {
       why = s.neutralPool <= 0
@@ -794,14 +796,20 @@ function attackPreview(s, me, d) {
 }
 
 function levyForm(s, me, request) {
+  const drop = request.refusalCost;
+  const after = Math.max(-3, me.fealty - drop);
+  const coronets = me.titles.length;
   return el('div', { class: 'form choices' }, [
-    el('p', { class: 'blurb' }, 'The Crown demands its levy.'),
-    el('button', { class: 'choice', disabled: me.gold < request.cost, onclick: () => answer('pay') }, [
-      el('strong', {}, `Pay ${request.cost} gold`), el('span', {}, `You hold ${me.gold}.`),
+    el('p', { class: 'blurb' }, 'The Crown calls up your host.'),
+    el('button', { class: 'choice', onclick: () => answer('serve') }, [
+      el('strong', {}, 'Send your host'),
+      el('span', {}, `Your army marches for the Crown: no walls and no attack this round. Anyone who breaks through takes a land${coronets ? ' — or one of your titles' : ''}. The whole table sees it before they choose a target.`),
     ]),
-    el('button', { class: 'choice', onclick: () => answer('fealty') }, [
-      el('strong', {}, 'Drop 1 fealty'),
-      el('span', {}, me.fealty <= -3 ? 'You are already at the floor — this costs nothing.' : `You would fall to ${me.fealty - 1}.`),
+    el('button', { class: 'choice', onclick: () => answer('refuse') }, [
+      el('strong', {}, `Refuse — ${drop} fealty`),
+      el('span', {}, me.fealty <= -3
+        ? 'You are already at the floor. This costs you nothing at all.'
+        : `You would fall to ${after >= 0 ? '+' : '−'}${Math.abs(after)}${bandOf(after) !== bandOf(me.fealty) ? `, out of the ${BAND_LABEL[bandOf(me.fealty)].toLowerCase()} band and into the ${BAND_LABEL[bandOf(after)].toLowerCase()}` : ''}. Your army stays home.`),
     ]),
   ]);
 }
@@ -828,14 +836,22 @@ function offerForm(s, request) {
 }
 
 function titleForm(request) {
+  const claimable = request.claimable || [];
   return el('div', { class: 'form' }, [
-    el('p', { class: 'blurb' }, `You have reached fealty +${request.threshold}. Choose a title — it is yours forever unless someone takes it from you in the field.`),
+    el('p', { class: 'blurb' }, `You have reached fealty +${request.threshold}. Choose a title — yours until somebody takes it from you in the field, or asks the King for it as their own grant.`),
     el('div', { class: 'title-grid' }, request.available.map((id) => el('button', {
       class: 'title-option', onclick: () => answer(id),
     }, [
       el('strong', {}, TITLE_BY_ID[id].name),
       el('span', {}, TITLE_BY_ID[id].text),
     ]))),
+    claimable.length ? el('p', { class: 'blurb' }, `Or claim one already held. The King does not want to make enemies of his friends, so it costs ${request.claimCost} gold to the Crown — and the house you take it from will know.`) : null,
+    claimable.length ? el('div', { class: 'title-grid' }, claimable.map((c) => el('button', {
+      class: 'title-option claim', onclick: () => answer(c.title),
+    }, [
+      el('strong', {}, `${TITLE_BY_ID[c.title].name} — from ${c.holderName}`),
+      el('span', {}, `${TITLE_BY_ID[c.title].text} Costs ${c.cost} gold.`),
+    ]))) : null,
   ]);
 }
 
@@ -950,7 +966,7 @@ function showRules() {
         'Attack = gold + support aimed at you + punching-down bonus + Marshal.',
         `Defense = walls (${t.walls}, or 0 if you also attacked) + support aimed at you + Warden.`,
         'Attacker wins on strictly greater. Herald wins its holder every tie.',
-        'Spoils: one land, or one title if the loser’s walls were down.',
+        'Spoils: one land, or one title if the loser’s walls were down — because they attacked, or because they answered the levy.',
       ]),
       section('Attacking costs standing', [
         'A favorite: −2 fealty. A neutral: nothing. An outlaw: +1. The Crown: straight to −3.',
@@ -960,14 +976,17 @@ function showRules() {
         'Win: the largest single contributor is crowned. Equal largest: civil war, all to −3.',
         'Lose: every conspirator falls to −3 and forfeits a land.',
       ]),
-      section('Titles', TITLES.map((t) => `${t.name} — ${t.text}`)),
+      section('Titles', [
+        ...TITLES.map((x) => `${x.name} — ${x.text}`),
+        `A grant at +2 or +3 may be spent on a title somebody already holds, for ${t.titleClaimCost} gold to the Crown.`,
+      ]),
       section('Winning', [
         'Usurp the throne, or hold the highest fealty when the crown deck runs out (ties: most lands, then most gold).',
       ]),
       section('The crown deck in play', [
         `${t.deck.tax} Tax — favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}.`,
-        `${t.deck.levy} Levy — pay ${t.levyCost} gold or drop 1 fealty.`,
-        `${t.deck.favor} Favor, ${t.deck.purge} Purge.`,
+        `${t.deck.levy} Levy — send your host (no walls, no attack this round) or refuse and drop ${t.levyRefusal} fealty.`,
+        `${t.deck.favor} Favor — every favorite is paid ${t.favorGold} gold, and those at +${t.favorLandAt} take a land as well.`,
       ]),
       section('House rulings this build makes', [
         'Support aimed at a player who attacked joins their attack; otherwise it joins their defense.',

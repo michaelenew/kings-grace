@@ -122,6 +122,8 @@ function blankStats() {
     bandSamples: 0,
     endGold: [],
     titlesHeld: 0,
+    titlesTaken: 0,
+    titlesClaimed: 0,
     byDoctrine: {},
     bySeat: [0, 0, 0, 0, 0, 0],
     seatGames: [0, 0, 0, 0, 0, 0],
@@ -154,16 +156,21 @@ async function runGame(seed, tuning, options, doctrinePool, players = 4) {
   const controllers = {};
   state.players.forEach((p) => { controllers[p.id] = createAI(p.personality, p.doctrine, saltFor(state.seed, p.seat)); });
   const game = new Game({ state, controllers });
-  // How often a player is reduced to attack-or-support because they cannot
-  // afford anything else. This is the "I only have two buttons" complaint,
-  // measured. It is a feel metric, and it matters as much as the win rates.
+  // How often a player is priced out of everything but throwing gold at
+  // somebody. This is the "I only have two buttons" complaint, measured. It is
+  // a feel metric, and it matters as much as the win rates.
+  //
+  // Being short of the coin is starvation; having your host away with the
+  // Crown's levy is not, so it is measured against the orders money can buy
+  // rather than against the length of the list.
   let choices = 0;
   let starved = 0;
   const originalCommitPhase = game.commitPhase.bind(game);
   game.commitPhase = async () => {
     for (const p of game.state.players) {
       choices += 1;
-      if (legalOrders(game.state, p).length <= 2) starved += 1;
+      const legal = legalOrders(game.state, p);
+      if (!legal.includes(ORDER.PETITION) && !legal.includes(ORDER.DEVELOP)) starved += 1;
     }
     return originalCommitPhase();
   };
@@ -200,6 +207,10 @@ function measure(stats, { state, winner, doctrines, bandRounds, samples, choices
       stats.coupRounds.push(entry.round);
     }
     if (entry.kind === 'victory' && entry.text.includes('by force')) stats.coupsWon += 1;
+    // How often a coronet changes hands, by either road. The whole point of a
+    // title is meant to be that holding one paints a target on you.
+    if (entry.kind === 'spoils' && entry.text.includes('strips')) stats.titlesTaken += 1;
+    if (entry.kind === 'title' && entry.text.includes('claims the title')) stats.titlesClaimed += 1;
     if (entry.kind === 'combat' && entry.text.includes('strikes at')) {
       stats.battles += 1;
       if (entry.text.includes('breaks through')) stats.battlesWon += 1;
@@ -286,6 +297,8 @@ async function tournament(tuningOverride, { n, ransom, doctrines, players = 4 })
       endBands: Object.fromEntries(Object.entries(stats.endBandCount).map(([k, v]) => [k, pct(v, stats.games * 4)])),
       meanEndGold: mean(stats.endGold),
       titlesPerGame: stats.titlesHeld / stats.games,
+      titlesTakenPerGame: stats.titlesTaken / stats.games,
+      titlesClaimedPerGame: stats.titlesClaimed / stats.games,
       doctrineRates,
       doctrineSpread: spread,
       seatRates: stats.bySeat.map((w, i) => pct(w, stats.seatGames[i])).filter((_, i) => stats.seatGames[i] > 0),
@@ -324,7 +337,8 @@ function detail(name, s) {
   console.log('  band-rounds ', Object.entries(s.bands).map(([k, v]) => `${k} ${v.toFixed(0)}%`).join('  '),
     '   at the end:', Object.entries(s.endBands).map(([k, v]) => `${k} ${v.toFixed(0)}%`).join(' '));
   console.log('  doctrines   ', s.doctrineRates.map((d) => `${d.name} ${d.rate.toFixed(0)}% (${d.usurps}f/${d.inherits}h)`).join('  '));
-  console.log('  starved     ', `${s.starvedChoices.toFixed(0)}% of turns offer only attack-or-support`);
+  console.log('  starved     ', `${s.starvedChoices.toFixed(0)}% of turns cannot afford an appeal or a develop`);
+  console.log('  coronets    ', `${s.titlesTakenPerGame.toFixed(2)} taken by sword, ${s.titlesClaimedPerGame.toFixed(2)} claimed by grant, per game`);
   console.log('  title edge  ', s.titleRates.map((t) => `${t.name} ${t.edge.toFixed(2)}x`).join('  '),
     `  spread ${s.titleSpread.toFixed(2)}x`);
   console.log('  seats       ', s.seatRates.map((r) => `${r.toFixed(0)}%`).join(' '),

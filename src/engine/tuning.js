@@ -60,10 +60,29 @@ export const RULES = {
   // ---- Crown deck -----------------------------------------------------
   taxByBand: { favorite: 1, neutral: 2, outlaw: 3 },
   chancellorRelief: 1,
-  levyCost: 4,
+  /**
+   * The levy asks for your host, not your purse. Answer it and your army
+   * marches under the royal banner: no walls and no attack this round, so
+   * everything you hold — titles included — is open. Refuse and the court
+   * remembers it by this much.
+   *
+   * Two is deliberate. It means +1 is a perch: you can refuse a levy and land
+   * at −1, still neutral. From 0 the same refusal makes you an outlaw. And a
+   * loyalist, who cannot afford to fall at all, has no choice but to serve —
+   * which is what puts their coronet in play round after round.
+   */
+  levyRefusal: 2,
   /** Favor pays every favorite: this much gold at +2, and a land as well at +3. */
   favorGold: 2,
   favorLandAt: 3,
+
+  // ---- Titles ---------------------------------------------------------
+  /**
+   * A title granted at +2 or +3 may be claimed from whoever already holds it,
+   * for this much gold to the Crown. The King does not want to make enemies of
+   * his friends, and the coin is what soothes the slight.
+   */
+  titleClaimCost: 2,
 
   // ---- Ransom module (optional) ---------------------------------------
   ransomTake: 2,

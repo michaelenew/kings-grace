@@ -50,7 +50,7 @@ if (args.search) {
       const [k, vs] = part.split('=');
       return [k, vs.split('|').map((v) => (v === 'null' ? null : Number(v)))];
     }))
-    : { crownBase: [4, 6, 8, 10], commitCap: [null, 6, 8], levyCost: [2, 3, 4] };
+    : { crownBase: [4, 6, 8, 10], commitCap: [null, 6, 8], levyRefusal: [1, 2, 3], titleClaimCost: [1, 2, 3] };
   const keys = Object.keys(grid);
   let combos = [{}];
   for (const key of keys) combos = combos.flatMap((c) => grid[key].map((v) => ({ ...c, [key]: v })));

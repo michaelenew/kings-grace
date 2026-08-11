@@ -45,7 +45,7 @@ commitment time.
 
 ### Favorite (+2, +3) — the crown's sword
 - Your attacks gain **+fealty** as bonus strength, but **only against targets whose fealty is below yours**. Punching up or sideways gets nothing. The crown is above everyone, so this bonus can never touch the crown, and it cannot be added to the crown's defense (the crown's strength already *is* its loyal armies).
-- **Titles:** the first time you reach +2, choose one title. The first time you reach +3, choose a second. Two maximum. Titles are kept forever — including after treason — unless stolen (§5).
+- **Titles:** the first time you reach +2, choose one title. The first time you reach +3, choose a second. Two maximum. A grant may be spent on an **unclaimed** title, or on one **another house already holds** — the King gives what he has already given — in which case it costs **2 gold to the Crown**, because he does not want to make enemies of his friends. You keep what you hold, including after treason, until somebody takes it from you in the field (§5) or claims it with their own grant.
 
 ### Neutral (−1, 0, +1) — the granary
 - **+1 gold** in every income step. Nobody's watching your fields.
@@ -114,11 +114,11 @@ to be bought with somebody else's sword.
 
 **Defense** = walls + Support gold aimed at the defender + Warden.
 
-- **Walls = 2**, but **walls = 0 if the defender also committed an Attack this round** — their army is in the field.
+- **Walls = 2**, but **walls = 0 if the defender has no army at home**: either they committed an Attack this round, or they answered the Crown's levy (§6). Their host is in the field either way.
 
 Attacker wins on **strictly greater**. Ties favor the defender (Herald breaks ties in its holder's favor, §7).
 
-**Spoils:** the winner takes **one land** of their choice from the loser. If the loser's army was in the field (walls were 0), the winner may instead take **one of the loser's titles**.
+**Spoils:** the winner takes **one land** of their choice from the loser. If the loser's army was in the field (walls were 0 — they attacked, or they answered the levy), the winner may instead take **one of the loser's titles**.
 
 **Multiple attacks on one target** resolve independently against the same defense, in descending attack-strength order (Herald, then random, breaks ordering ties). Each successful attack takes its own spoils.
 
@@ -140,12 +140,24 @@ Resolved immediately on flip:
 | Card | Count | Effect |
 |---|---|---|
 | **Tax** | 4 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
-| **Levy** | 4 | Each player pays 4 gold to the Crown or drops 1 fealty. |
+| **Levy** | 4 | The Crown calls up your host. **Serve** — your army marches, so you have **no walls and no Attack order this round** — or **refuse** and drop **2 fealty**. |
 | **Favor** | 4 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
 
+The levy resolves on the flip, **before orders are sealed**, so the whole table
+sees whose gate is open before anyone chooses a target. That is the point of it.
+
+Two is the right number to lose for a refusal because of where it leaves you.
+From **+1** you land at −1 and are still neutral, so the top of the neutral band
+is a perch: you can defy the Crown and keep your walls. From **0** the same
+refusal makes you an outlaw. And a house climbing toward the throne cannot
+afford to fall at all, so a loyalist has no real choice but to serve — which is
+what puts their coronet on the table, round after round, in exactly the way
+nobody else's is.
+
 **Optional — the levy falls on the outlaws.** With this rule on, a Levy does not
-ask an outlaw for coin: the Crown seizes their land instead, one at −2 and two
-at −3. They are not being taxed, they are being made an example of.
+ask an outlaw for anything: the Crown seizes their land instead, one at −2 and
+two at −3. They are not being asked, they are being made an example of — and
+they keep their army, which makes a levy round the outlaws' hour.
 
 One **Favor** is seeded into the first three flips so loyalty pays early and the
 table diverges fast.
@@ -154,7 +166,8 @@ table diverges fast.
 
 ## 7. Titles (6)
 
-Granted at fealty thresholds (§2), kept forever, stealable only per §5.
+Granted at fealty thresholds (§2). Taken by the sword per §5, or bought out from
+under you by a rival spending their own grant and 2 gold (§2).
 
 - **Marshal** — +1 to your attack strength.
 - **Warden** — +1 to your defense.
@@ -192,7 +205,10 @@ Edges the rules above do not settle, and how this implementation resolves them.
 - **A player who can afford no order may Hold**, doing nothing. It is not one of the four orders and is unavailable to anyone who can afford anything else.
 - **A civil war** (contribution tie among winning conspirators) voids only the coup. Attacks between houses in the same round still resolve.
 - **A failed coup** does not shelter the conspirator: their walls are still down for everyone else's attacks that round, and land lost to another house can leave nothing to forfeit to the Crown.
-- **Title exhaustion:** if all six titles are held when a player crosses +2 or +3, the grant stays pending rather than being burned.
+- **Title exhaustion:** if all six titles are held when a player crosses +2 or +3, the grant stays pending rather than being burned — and it stays pending if they cannot afford to claim one either. You never spend a grant on nothing.
+- **A claim takes effect the moment it is made**, so if two houses cross a threshold in the same round, the second may claim what the first just took. Precedence decides who chooses first.
+- **You cannot claim a title you already hold**, and a claim moves the title without refunding anything to the house that loses it. The 2 gold goes to the Crown, not to them.
+- **A house that answered the levy still has an army for defense** in every sense except walls: support aimed at them still counts, and the Warden still adds its point. It is the gate that is unmanned, not the field.
 - **Turncoat tokens** are objects, not rights. An outlaw takes one each round they are in the shadow (up to two held at once), and anyone holding one may spend it in the whispers step. That is what makes them sellable.
 - **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
 - **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
@@ -233,14 +249,42 @@ much flatter:
 |---|---|---|---|---|---|---|
 | Win rate above a 26.5% baseline | +11.8pt | +7.2pt | +6.5pt | +2.0pt | +1.3pt | −0.2pt |
 
-Marshal is genuinely the best of them and Steward genuinely the weakest, but
-nothing here is broken, and Warden turns out to be worth nearly as much as
-Herald rather than nothing at all.
+**Then titles were made takeable, and those numbers collapsed.** The reading
+above was of a game where a coronet changed hands 0.06 times, because §5 only
+let you take one from a house whose walls were down — a house that attacked this
+round — and title-holders are favorites, who rarely attack. So a title was a
+thing you banked. Two changes opened it:
 
-**The real open problem is that titles almost never change hands: 0.06 steals
-per game.** §5 only lets you take a title from a house whose walls were down —
-that is, one that attacked this round — and the houses holding titles are
-favorites, who rarely attack. So the whole counterweight the design intends,
-where an advantage becomes your opponent's the moment it is stolen and
-defending it costs you the land and gold you were not building, is currently
-unreachable. That is worth fixing before touching any title's text.
+- the levy asks for your **host** rather than your purse, so answering it puts
+  your gate down in public, and the houses who cannot afford to refuse are
+  exactly the ones wearing coronets;
+- a grant at +2 or +3 may be spent **claiming a title somebody already holds**,
+  for 2 gold.
+
+Coronets now change hands about **2.5 times a game**, and the causal table
+re-measured on the same 400-seed experiment reads:
+
+| | Warden | Herald | Marshal | Steward | Chancellor | Spymaster |
+|---|---|---|---|---|---|---|
+| Win rate above a 23.5% baseline | +4.0pt | +3.8pt | +3.3pt | +0.8pt | −0.3pt | −1.3pt |
+| Still yours at the end | 76% | 44% | 29% | 94% | 83% | 99% |
+
+The spread across all six fell from about 12 points to about 5, and nothing was
+done to any title's text to achieve it. The second row is why: the titles worth
+having are the ones you do not get to keep. A gifted Marshal is gone by the end
+of the game 71% of the time and a gifted Spymaster essentially never — the table
+prices them, and the price is paid in how long you hold them. An advantage is
+only worth what you can do with it before somebody takes it.
+
+**What is still open:** theft *in the field* remains rare — 0.06 a game, barely
+moved. The levy opened the gate but these bots do not walk through it, because
+attacking a favorite costs 2 fealty and a bot will not pay that to rob a house
+it is not already fighting. The claim mechanic is doing all the work. Whether a
+real table behaves the same way is exactly the question the bots cannot answer.
+
+**The levy change cost the game its main gold sink.** Levies used to pull 4 gold
+per house out of play on a third of the deck. They now pull none, and mean gold
+at the end of a four-handed game rose from 17.6 to 26.9. Nothing measured is
+obviously broken by it — nobody is priced out of their turn, and coups did not
+run away — but gold is a looser constraint than it was, and if it wants
+tightening, Tax is the lever.
