@@ -74,18 +74,27 @@ coups a real gamble, nobody priced out of their own turn — and prints what eac
 configuration is failing at. `test/balance.test.js` asserts the shipped rules
 still hit those targets, so the claims below are checked rather than remembered.
 
-Where it lands, across 600 games per table size:
+Where it lands, across 800 games per table size:
 
-| Players | Ends in usurpation | Mean ending round (of 10) | Battles/game | Doctrine spread |
-|---|---|---|---|---|
-| 3 | 61% | 9.6 | 5.6 | 28pt |
-| 4 | 47% | 9.7 | 7.4 | 18pt |
-| 5 | 39% | 9.7 | 8.8 | 21pt |
-| 6 | 34% | 9.7 | 10.3 | 22pt |
+| Players | Usurp | Inherit | Coups tried/game | Coups landed | Battles/game | Doctrine spread |
+|---|---|---|---|---|---|---|
+| 3 | 59% | 41% | 1.38 | 43% | 5.5 | 30pt |
+| 4 | 46% | 54% | 1.56 | 29% | 7.3 | 21pt |
+| 5 | 39% | 61% | 1.64 | 24% | 8.6 | 21pt |
+| 6 | 32% | 68% | 1.75 | 18% | 10.2 | 22pt |
 
-Seat win rates sit within a couple of points of the 1/players baseline at every
-size. Both roads to the throne stay open at every table size, which is the
-headline the constants were chosen for.
+Both roads stay open at every size, which is the headline the constants were
+chosen for, but the balance between them slides with the table. The mechanism is
+in the middle two columns: bigger tables *try* more coups and land far fewer.
+Crown strength is flat with player count, so none of that gradient is the
+constant — it is coalition dynamics. More houses are free to throw gold behind
+the throne, and the largest-single-contributor rule gets harder to satisfy as a
+conspiracy grows.
+
+Three players is the outlier in more than one way: coup-heavy, and the least
+balanced table, with raider on 52% and shadow on 34% against a 33% baseline.
+Four and five sit closest to an even split of the two roads. Seat win rates sit
+within a couple of points of the 1/players baseline at every size.
 
 ### What the measurements say, and what they cannot
 
@@ -141,8 +150,20 @@ of the kind:
 
 | | Building | Attacking | Conniving | Used all three lanes |
 |---|---|---|---|---|
-| Usurpers | 39% | **48%** | 14% | 34% |
-| Inheritors | 44% | **12%** | 45% | 33% |
+| Usurpers | 37–40% | **44–52%** | 11–17% | 20–37% |
+| Inheritors | 39–44% | **11–13%** | 44–48% | 27–33% |
+
+(ranges across three to six players — the shape barely moves with table size)
+
+**Conniving is the road to an inheritance.** An inheritor spends nearly half
+their turns working through other people, at every table size. The fealty track
+tops out at +3 and everyone climbing gets there, so inheritance is settled by the
+tie-break — land, then gold — and both of those move through deals and Support
+far more than through appeals. Climbing makes you eligible; conniving wins the
+tie. Which lane gets *skipped* flips with the table, too: at three players it is
+conniving 60% of the time, at six it is attacking 72%. A small table has few
+partners and a reachable throne, so you fight; a big table has an unreachable
+throne and five people to bargain with, so you deal.
 
 The two roads have opposite shapes and the "balanced" average is the mean of
 them. Only a third of winners used all three lanes and 44% skipped one outright
