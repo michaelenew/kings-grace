@@ -31,9 +31,13 @@ test('crown strength is the constant plus the cards left', () => {
   const g = makeGame();
   assert.equal(
     crownStrength(g.state),
-    RULES.crownBase + RULES.crownPerPlayer * 4 + g.state.deck.length,
-    'crown strength is base + per-player + cards remaining',
+    Math.round(RULES.crownBase + RULES.crownPerPlayer * 4 + RULES.crownPerCard * g.state.deck.length),
+    'crown strength is base + per-player + per-card x cards remaining, rounded',
   );
+  // It has to decay to the base as the deck empties, or the coup window never
+  // opens: the whole check on a runaway heir is that the throne gets reachable.
+  g.state.deck = [];
+  assert.equal(crownStrength(g.state), RULES.crownBase);
 });
 
 test('a game can be dealt for three through six players', () => {

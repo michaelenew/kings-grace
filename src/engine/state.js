@@ -140,7 +140,9 @@ export function claimableTitles(state, player) {
  */
 export function crownStrength(state) {
   const t = state.tuning;
-  return t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * state.deck.length;
+  // Rounded: the per-card term is fractional so the curve can be tuned finely,
+  // but a crown that defends with 15.8 is not something you can put on a card.
+  return Math.round(t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * state.deck.length);
 }
 
 /** The most gold a single order may carry (§3's cap, off by default). */

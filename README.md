@@ -76,12 +76,12 @@ still hit those targets, so the claims below are checked rather than remembered.
 
 Where it lands, across 600 games per table size:
 
-| Players | Ends in usurpation | Mean ending round (of 12) | Battles/game | Doctrine spread |
+| Players | Ends in usurpation | Mean ending round (of 10) | Battles/game | Doctrine spread |
 |---|---|---|---|---|
-| 3 | 59% | 11.3 | 6.8 | 33pt |
-| 4 | 51% | 11.4 | 8.6 | 14pt |
-| 5 | 47% | 11.4 | 10.1 | 19pt |
-| 6 | 42% | 11.4 | 11.7 | 17pt |
+| 3 | 61% | 9.6 | 5.6 | 28pt |
+| 4 | 47% | 9.7 | 7.4 | 18pt |
+| 5 | 39% | 9.7 | 8.8 | 21pt |
+| 6 | 34% | 9.7 | 10.3 | 22pt |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
 size. Both roads to the throne stay open at every table size, which is the
@@ -133,6 +133,13 @@ first turn and made fighting — a cost now for a gain now — look like a waste
 moved more than every constant in the game put together: battles 5.5 -> 7.3,
 outlaw band occupancy 8% -> 18%, doctrine spread 33pt -> 25pt. Adding plunder on
 top took battles to 8.9 and the spread to 12pt.
+
+**The back half was the problem, so there is less of it.** The deck went from
+twelve cards to ten — 3 Tax, 4 Levy, 3 Favor — which took the enjoyment score
+from 72 to 79 and put a winner's building turns on target for the first time,
+without changing a single order's text. Which card comes out matters more than
+how many: dropping a Levy instead of a Tax costs nine points of affordability,
+because the Tax is the squeeze and the Levy is what opens gates.
 
 **Land had to be recycled and there had to be more of it, and neither worked
 alone.** Failed taxes are now paid in land, and those fields go back to the

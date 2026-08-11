@@ -20,14 +20,14 @@ is in Appendix B.
 | Starting gold per player | 8 |
 | Starting fealty per player | 0 |
 | Neutral land pool | 3 per player |
-| Crown deck | 12 cards (composition in §6) |
+| Crown deck | 10 cards (composition in §6) |
 | Fealty track | −3 to +3 per player |
 | Titles | 6 unique (list in §7) |
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **6 + cards remaining in the crown deck**,
-running 18 down to 6.
+**Crown strength** at any moment = **6 + 1.4 × cards remaining**, rounded —
+running 20 down to 6 as the deck empties.
 
 The per-player term is a knob and it defaults to zero. Growing the crown with
 the table was tried and it shuts the coup down: a bigger table already supplies
@@ -145,15 +145,15 @@ somebody else's coup is a way of losing.
 
 ---
 
-## 6. The Crown Deck (12 cards)
+## 6. The Crown Deck (10 cards)
 
 Resolved immediately on flip:
 
 | Card | Count | Effect |
 |---|---|---|
-| **Tax** | 4 | Favorites pay 6, neutrals pay 7, outlaws pay 8 (Chancellor pays 1 less, min 0). Pay what coin you have; **anything still owed is taken in land**, one field per 5 gold of debt, and those fields go **back to the unclaimed pool**. |
+| **Tax** | 3 | Favorites pay 6, neutrals pay 7, outlaws pay 8 (Chancellor pays 1 less, min 0). Pay what coin you have; **anything still owed is taken in land**, one field per 5 gold of debt, and those fields go **back to the unclaimed pool**. |
 | **Levy** | 4 | The Crown calls up your host. **Serve** — your army marches, so you have **no walls and no Attack order this round** — or **refuse** and drop **2 fealty**. |
-| **Favor** | 4 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
+| **Favor** | 3 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
 
 The levy resolves on the flip, **before orders are sealed**, so the whole table
 sees whose gate is open before anyone chooses a target. That is the point of it.
@@ -385,6 +385,38 @@ fighting — a cost now for a gain now — look like a waste:
 The bands came back too: the outlaw band went from 8% of all player-rounds to
 18%, because the shadow's payoff is immediate and the shadow was being priced
 against an eleven-round land habit.
+
+### The deck went from twelve cards to ten
+
+The back half was the problem all along, and the cheapest fix for a bad back
+half is to have less of it. Ten cards — **3 Tax, 4 Levy, 3 Favor** — with the
+crown's per-card term raised from 1 to 1.4 so the throne still starts at 20 and
+still decays to 6.
+
+| Deck | Enjoyment | A winner's mix | Options (of 25) | Gold at the end |
+|---|---|---|---|---|
+| 12 (4/4/4) | 72 | build 36 · attack 30 · connive 34 | 22 | 10.2 |
+| 10 (4/3/3) | 74 | build 42 · attack 35 · connive 23 | **16** | 4.7 |
+| **10 (3/4/3)** | **79** | build 41 · attack 30 · connive 29 | **25** | 9.2 |
+| 9 (3/3/3) | 76 | build 43 · attack 31 · connive 26 | 23 | 6.4 |
+
+Two things fall out of that table. The first is that shortening the deck fixes
+the mix by deleting the rounds that had nothing in them: **building lands on
+target for the first time**, and conniving falls from 34% to 29% without
+Support's terms changing at all. The second is that *which* card you remove
+matters more than how many: taking out a Levy instead of a Tax costs nine points
+of options and five gold a game, because the Tax is the squeeze and the Levy is
+the thing that opens gates.
+
+Nine cards was the original instinct and it measures well, but ten with an extra
+Levy beats it on affordability, breadth, fights and doctrine spread, at a cost of
+about half a round of length.
+
+**The crown's per-card term is now the most violent number in the game.** On a
+ten-card deck, leaving it at 1 gives 57% usurpation; one point of `crownBase`
+takes that to 13%, and two points to 5%. The fractional per-card term exists so
+the curve can be steered without that cliff — which is why crown strength is now
+rounded for display.
 
 ### Two changes to the land economy, tested apart and together
 

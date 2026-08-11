@@ -29,7 +29,7 @@ export const RULES = {
   neutralPerPlayer: 3,
   /** Most unspent turncoat tokens a player may hold at once. */
   turncoatMax: 2,
-  deck: { tax: 4, levy: 4, favor: 4 },
+  deck: { tax: 3, levy: 4, favor: 3 },
 
   // ---- The Crown ------------------------------------------------------
   // Crown strength = crownBase + crownPerPlayer x players + cards remaining.
@@ -42,7 +42,16 @@ export const RULES = {
   // is the only check on the heir.
   crownBase: 6,
   crownPerPlayer: 0,
-  crownPerCard: 1,
+  /**
+   * 1.4, not 1, because the deck is ten cards rather than twelve. What this
+   * number really controls is how fast the coup window *opens*: the crown
+   * starts at 6 + 1.4 x 10 = 20 and decays to 6 as the deck runs out. On a
+   * short deck it has to decay faster to reach the same place, and the game is
+   * violently sensitive to it — at a flat crown of 6 + cards a ten-card game
+   * ends in usurpation 57% of the time, and one point of base takes that to
+   * 13%.
+   */
+  crownPerCard: 1.4,
 
   // ---- Combat ---------------------------------------------------------
   walls: 2,
