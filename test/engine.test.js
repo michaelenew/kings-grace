@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BAND, CARD, CROWN, ORDER, SETUP, bandOf } from '../src/engine/constants.js';
+import { BAND, CARD, CROWN, ORDER, PLAYERS, bandOf } from '../src/engine/constants.js';
 import { buildDeck, crownStrength, legalOrders } from '../src/engine/state.js';
+import { V0_1 } from '../src/engine/tuning.js';
 import { makeRng } from '../src/engine/rng.js';
 import { fillOrders, get, makeGame, set } from './_helpers.js';
 
@@ -10,7 +11,7 @@ import { fillOrders, get, makeGame, set } from './_helpers.js';
 
 test('setup matches the rules sheet', () => {
   const g = makeGame();
-  assert.equal(g.state.players.length, SETUP.PLAYERS);
+  assert.equal(g.state.players.length, PLAYERS);
   for (const p of g.state.players) {
     assert.equal(p.lands, 3);
     assert.equal(p.gold, 5);
@@ -22,7 +23,7 @@ test('setup matches the rules sheet', () => {
 });
 
 test('crown deck holds 4 tax, 4 levy, 3 favor, 1 purge', () => {
-  const deck = buildDeck(makeRng(3), false);
+  const deck = buildDeck(makeRng(3), false, V0_1);
   const count = (c) => deck.filter((x) => x === c).length;
   assert.equal(count(CARD.TAX), 4);
   assert.equal(count(CARD.LEVY), 4);
@@ -32,7 +33,7 @@ test('crown deck holds 4 tax, 4 levy, 3 favor, 1 purge', () => {
 
 test('the tuning knob seeds a Favor into the first three flips', () => {
   for (let seed = 1; seed <= 40; seed++) {
-    const deck = buildDeck(makeRng(seed), true);
+    const deck = buildDeck(makeRng(seed), true, V0_1);
     assert.ok(deck.slice(0, 3).includes(CARD.FAVOR), `seed ${seed}`);
     assert.equal(deck.length, 12);
     assert.equal(deck.filter((c) => c === CARD.FAVOR).length, 3);

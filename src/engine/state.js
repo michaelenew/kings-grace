@@ -1,22 +1,20 @@
 // Game state construction and pure read-only helpers.
 
-import {
-  BAND, CARD, COSTS, CROWN, CROWN_BASE, HOUSE_NAMES, ORDER, PERSONALITIES,
-  SETUP, TITLES, bandOf,
-} from './constants.js';
+import { BAND, CARD, CROWN, HOUSE_NAMES, ORDER, PERSONALITIES, TITLES, bandOf } from './constants.js';
+import { deckSize, resolveTuning } from './tuning.js';
 import { makeRng, seedFrom } from './rng.js';
 
 /**
- * Build the 12-card crown deck (§6).
+ * Build the crown deck (§6).
  * `seedFavorEarly` applies the tuning knob from §6: guarantee one Favor inside
  * the first three flips so loyalty pays early.
  */
-export function buildDeck(rng, seedFavorEarly = true) {
+export function buildDeck(rng, seedFavorEarly = true, tuning = resolveTuning()) {
   const cards = [];
-  for (const [type, count] of Object.entries(SETUP.DECK)) {
+  for (const [type, count] of Object.entries(tuning.deck)) {
     for (let i = 0; i < count; i++) cards.push(type);
   }
-  let deck = rng.shuffle(cards);
+  const deck = rng.shuffle(cards);
   if (seedFavorEarly && !deck.slice(0, 3).includes(CARD.FAVOR)) {
     const idx = deck.indexOf(CARD.FAVOR);
     if (idx !== -1) {
@@ -32,33 +30,36 @@ export function buildDeck(rng, seedFavorEarly = true) {
  * @param {string|number} [opts.seed]
  * @param {Array<{name?:string, kind:'human'|'ai', personality?:string}>} [opts.seats]
  * @param {object} [opts.options]
+ * @param {object} [opts.tuning] overrides on top of the v0.1 constants
  */
 export function createGame(opts = {}) {
   const rawSeed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const seed = typeof rawSeed === 'number' ? rawSeed >>> 0 : seedFrom(String(rawSeed));
   const rng = makeRng(seed);
+  const tuning = resolveTuning(opts.tuning);
 
   const options = {
     ransom: false, // §9 optional module
     seedFavorEarly: true, // §6 tuning knob
-    crownBase: CROWN_BASE, // §10 tuning knob
     ...(opts.options || {}),
   };
 
-  const seatSpecs = opts.seats && opts.seats.length === SETUP.PLAYERS
+  const seatCount = opts.seats?.length || 4;
+  const seatSpecs = opts.seats && opts.seats.length
     ? opts.seats
-    : [{ kind: 'human' }, { kind: 'ai' }, { kind: 'ai' }, { kind: 'ai' }];
+    : Array.from({ length: seatCount }, () => ({ kind: 'ai' }));
 
   const personalityBag = rng.shuffle(PERSONALITIES);
   const players = seatSpecs.map((spec, i) => ({
     id: `p${i}`,
     seat: i,
-    name: spec.name || HOUSE_NAMES[i],
+    name: spec.name || HOUSE_NAMES[i % HOUSE_NAMES.length],
     kind: spec.kind,
-    personality: spec.kind === 'ai' ? (spec.personality || personalityBag[i]) : null,
-    gold: SETUP.START_GOLD,
-    lands: SETUP.START_LANDS,
-    fealty: SETUP.START_FEALTY,
+    personality: spec.kind === 'ai' ? (spec.personality || personalityBag[i % personalityBag.length]) : null,
+    doctrine: spec.doctrine || null,
+    gold: tuning.startGold,
+    lands: tuning.startLands,
+    fealty: tuning.startFealty,
     titles: [],
     titleGrants: { 2: false, 3: false }, // "first time you reach" flags (§2)
     ransomUsed: false,
@@ -69,12 +70,14 @@ export function createGame(opts = {}) {
     seed,
     rng,
     options,
+    tuning,
     round: 0,
     phase: 'setup',
-    deck: buildDeck(rng, options.seedFavorEarly),
+    deck: buildDeck(rng, options.seedFavorEarly, tuning),
+    deckStart: deckSize(tuning),
     discard: [],
     lastCard: null,
-    neutralPool: SETUP.NEUTRAL_POOL,
+    neutralPool: tuning.neutralPool,
     crownLands: 0, // lands forfeited to the Crown (out of play)
     crownGold: 0,
     players,
@@ -85,7 +88,7 @@ export function createGame(opts = {}) {
     goodwill: {}, // "from>to" -> number, gold gifted so far
     changeRights: {}, // pid -> count of unspent turncoat rights
     log: [],
-    winner: null, // {playerIds:[], how:'usurp'|'inherit'|'civil-war'}
+    winner: null, // {playerIds:[], how:'usurp'|'inherit'}
   };
 }
 
@@ -107,36 +110,40 @@ export function unclaimedTitles(state) {
 }
 
 /**
- * §1 — crown strength = 4 + cards remaining.
- * The constant is the tuning knob called out in §10: raise it if hoarded war
- * chests open the usurpation window too early.
+ * §1 — crown strength = base + cards remaining.
+ * Both terms are tuning knobs; §10 calls the base out by name.
  */
 export function crownStrength(state) {
-  return (state.options?.crownBase ?? CROWN_BASE) + state.deck.length;
+  return state.tuning.crownBase + state.tuning.crownPerCard * state.deck.length;
+}
+
+/** The most gold a single order may carry (§3's cap, off by default). */
+export function commitCeiling(state, player) {
+  const cap = state.tuning.commitCap;
+  return cap === null || cap === undefined ? player.gold : Math.min(player.gold, cap);
 }
 
 /** §4 — which orders this player can legally commit right now. */
 export function legalOrders(state, player) {
   const out = [];
   if (player.gold >= 1) out.push(ORDER.ATTACK, ORDER.SUPPORT);
-  const petitionCost = bandOf(player.fealty) === BAND.OUTLAW ? COSTS.PARDON : COSTS.PETITION;
-  if (player.gold >= petitionCost) out.push(ORDER.PETITION);
-  if (player.gold >= COSTS.DEVELOP && state.neutralPool > 0) out.push(ORDER.DEVELOP);
+  if (player.gold >= petitionCostFor(state, player)) out.push(ORDER.PETITION);
+  if (player.gold >= state.tuning.developCost && state.neutralPool > 0) out.push(ORDER.DEVELOP);
   if (state.options.ransom && !player.ransomUsed) out.push(ORDER.RANSOM);
   if (out.length === 0) out.push(ORDER.HOLD);
   return out;
 }
 
-export function petitionCostFor(player) {
-  return bandOf(player.fealty) === BAND.OUTLAW ? COSTS.PARDON : COSTS.PETITION;
+export function petitionCostFor(state, player) {
+  return bandOf(player.fealty) === BAND.OUTLAW ? state.tuning.pardonCost : state.tuning.petitionCost;
 }
 
 /** Legal targets for attack/support/ransom. */
 export function legalTargets(state, player, order) {
   const others = state.players.filter((p) => p.id !== player.id).map((p) => p.id);
-  if (order === ORDER.ATTACK) return [...others, CROWN];
-  if (order === ORDER.SUPPORT) return [...others, CROWN];
-  if (order === ORDER.RANSOM) return [...others, CROWN];
+  if (order === ORDER.ATTACK || order === ORDER.SUPPORT || order === ORDER.RANSOM) {
+    return [...others, CROWN];
+  }
   return [];
 }
 
@@ -150,18 +157,33 @@ export function viewFor(state, pid) {
   const view = {
     seed: state.seed,
     options: state.options,
+    tuning: state.tuning,
     round: state.round,
     phase: state.phase,
     deckCount: state.deck.length,
+    deckStart: state.deckStart,
     crownStrength: crownStrength(state),
     lastCard: state.lastCard,
     knownTopCard: state.revealed ? (state.deck[0] ?? null) : (known.topCard ?? null),
     neutralPool: state.neutralPool,
     crownLands: state.crownLands,
-    players: state.players.map((p) => ({ ...p, titles: p.titles.slice() })),
+    // Orders are simultaneous, so the *size* of another player's commitment is
+    // hidden too — until reveal their purse looks untouched. Without this,
+    // whoever is asked last can read everyone else's war chest off the board.
+    players: state.players.map((p) => {
+      const hide = !state.revealed && p.id !== pid && p.escrow > 0;
+      return {
+        ...p,
+        titles: p.titles.slice(),
+        gold: hide ? p.gold + p.escrow : p.gold,
+        escrow: hide ? 0 : p.escrow,
+      };
+    }),
     me: pid,
     commitments: {},
-    pacts: { ...state.pacts },
+    // Deals are private to the two houses that struck them.
+    pacts: Object.fromEntries(Object.entries(state.pacts)
+      .filter(([who, pact]) => who === pid || pact.with === pid)),
     goodwill: { ...state.goodwill },
     winner: state.winner,
   };

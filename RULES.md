@@ -154,7 +154,41 @@ Two roads to the throne:
 
 ---
 
-## Appendix: rulings this implementation makes
+## Appendix A: the tuned constants
+
+v0.1's own §10 asks a first playtest to watch the crown-strength curve, the
+pardon price, the outlaw tax and whether hoarded war chests open the usurpation
+window too early. They do. This build ships two presets: **v0.1**, the sheet
+exactly as written, and **Tuned**, the default. The tuned changes:
+
+| Constant | v0.1 | Tuned |
+|---|---|---|
+| Crown strength | 4 + cards remaining | **6** + cards remaining |
+| Gold per order | uncapped (§10) / 1–3 (§3) | **at most 6** |
+| Tax by band | 1 / 2 / 3 | **2 / 3 / 4** |
+| Levy | 2 gold or 1 fealty | **4 gold** or 1 fealty |
+| Petition | 2 gold | **3 gold** |
+| Pardon | 3 gold | **4 gold** |
+| Crown deck | 4 Tax, 4 Levy, 3 Favor, 1 Purge | **5 Tax, 4 Levy, 2 Favor, 1 Purge** |
+
+Everything else is unchanged: walls of 2, the punching-down bonus, the standing
+cost of attacking each band, all six titles, land income, the neutral granary,
+and the starting position of 3 lands and 5 gold.
+
+The commitment cap is the biggest change and the one worth arguing about. §3
+says "a hidden gold commitment (1–3)" and §10 says commitments are uncapped;
+they cannot both be right. A cap of 6 sits between them, and it is what turns a
+usurpation into a conspiracy: crown strength never falls below 6, and the most
+one house can put behind a single attack is 6 (7 with the Marshal), so taking
+the throne means buying somebody else's support first. Support aimed at an
+attacker counts toward that attacker's strength, so the bought sword crowns the
+buyer — §10's own deterrent, now load-bearing.
+
+See the README for how these were chosen and what the numbers look like.
+
+---
+
+## Appendix B: rulings this implementation makes
 
 v0.1 leaves a few edges undefined. The code resolves them as follows; each is a
 one-line change if you want it the other way.
@@ -164,6 +198,10 @@ one-line change if you want it the other way.
 - **Ransom (§9)** resolves alongside petitions in step 3.1, and reads the target's band from the start of resolution.
 - **Commitment size** is uncapped (at least 1, at most your gold), following §10's "uncapped commitments" rather than the parenthetical "(1–3)" in §3.
 - **A player who can afford no order may Hold**, doing nothing. It is not one of the four orders and is unavailable to anyone who can afford anything else.
+- **Table talk gets an explicit step** at the top of each round, before orders are sealed. §3 already allows gold to move at any time and deals to be struck at any time; the step exists so a bot has a moment to make and answer proposals, and so a human is asked. It changes no rule: gold moves for real, promises still bind nobody.
+- **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
+- **The size of a sealed commitment is hidden**, not just the order. Escrowed gold does not show on the board until the reveal, or players asked later in the round could read everyone else's war chest.
+- **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
 - **A civil war** (contribution tie among winning conspirators) voids only the coup. Attacks between houses in the same round still resolve.
 - **A failed coup** does not shelter the conspirator: their walls are still down for everyone else's attacks that round, and land lost to another house can leave nothing to forfeit to the Crown.
 - **Title exhaustion:** if all six titles are held when a player crosses +2 or +3, the grant stays pending rather than being burned.

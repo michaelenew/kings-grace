@@ -4,12 +4,13 @@
 // controller for every human player plus the renderer for the shared board.
 
 import {
-  BAND_LABEL, CARD_LABEL, CARD_TEXT, CROWN, HOUSE_NAMES, ORDER, ORDER_LABEL,
-  PERSONALITY_LABEL, TITLES, TITLE_BY_ID, bandOf,
+  BAND_LABEL, CARD_LABEL, CROWN, HOUSE_NAMES, ORDER, ORDER_LABEL,
+  PERSONALITY_LABEL, TITLES, TITLE_BY_ID, bandOf, cardText,
 } from '../engine/constants.js';
 import { Game, describeOrder } from '../engine/game.js';
-import { createGame, crownStrength } from '../engine/state.js';
-import { createAI } from '../engine/ai.js';
+import { createGame, crownStrength, commitCeiling } from '../engine/state.js';
+import { PRESETS, resolveTuning } from '../engine/tuning.js';
+import { createAI, saltFor } from '../engine/ai.js';
 import { PARLEY_KINDS, proposeParley } from '../engine/diplomacy.js';
 import { el, mount, number, select } from './dom.js';
 
@@ -31,10 +32,23 @@ const app = {
     seed: '',
     ransom: false,
     seedFavorEarly: true,
-    crownBase: 4,
+    preset: 'tuned',
+    tuning: {}, // overrides on top of the preset
     seats: [{ kind: 'human' }, { kind: 'ai' }, { kind: 'ai' }, { kind: 'ai' }],
   },
+  advancedOpen: false,
 };
+
+/** The knobs worth putting in front of a playtester, in the order they matter. */
+const KNOBS = [
+  { key: 'crownBase', label: 'Crown strength constant', hint: 'Crown strength is this plus the cards still in the deck.' },
+  { key: 'commitCap', label: 'Most gold in one order', hint: 'Blank for no cap. A cap is what forces a usurpation to be a conspiracy.', nullable: true },
+  { key: 'petitionCost', label: 'Petition cost' },
+  { key: 'pardonCost', label: 'Pardon cost (outlaws)' },
+  { key: 'developCost', label: 'Develop cost' },
+  { key: 'levyCost', label: 'Levy demand' },
+  { key: 'walls', label: 'Walls' },
+];
 
 // --------------------------------------------------------------- controllers
 
@@ -58,7 +72,7 @@ function humanController(pid) {
 }
 
 function isPrivate(request) {
-  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'turncoatGranted'].includes(request.type);
+  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'turncoatGranted', 'offer'].includes(request.type);
 }
 
 function answer(value) {
@@ -89,7 +103,8 @@ function startGame() {
   const s = app.settings;
   const state = createGame({
     seed: s.seed.trim() === '' ? undefined : s.seed.trim(),
-    options: { ransom: s.ransom, seedFavorEarly: s.seedFavorEarly, crownBase: Number(s.crownBase) || 4 },
+    options: { ransom: s.ransom, seedFavorEarly: s.seedFavorEarly },
+    tuning: activeTuning(),
     seats: s.seats.map((seat, i) => ({ kind: seat.kind, name: HOUSE_NAMES[i] })),
   });
   const controllers = {};
@@ -99,7 +114,7 @@ function startGame() {
       controllers[p.id] = humanController(p.id);
       app.humanSeats.add(p.id);
     } else {
-      controllers[p.id] = createAI(p.personality);
+      controllers[p.id] = createAI(p.personality, p.doctrine || 'opportunist', saltFor(state.seed, p.seat));
     }
   }
   const game = new Game({
@@ -123,6 +138,12 @@ function startGame() {
   game.subscribe(() => render());
   render();
   game.run();
+}
+
+/** Preset plus whatever the player has overridden on top of it. */
+function activeTuning() {
+  const s = app.settings;
+  return { ...(PRESETS[s.preset]?.tuning || {}), ...s.tuning };
 }
 
 function firstHuman(state) {
@@ -173,6 +194,14 @@ function setupScreen() {
       el('p', { class: 'subtitle' }, 'Serve the crown, grow fat, or vanish into outlawry — then take the throne before someone else inherits it.'),
       el('h3', {}, 'The table'),
       el('div', { class: 'seats' }, [0, 1, 2, 3].map(seatRow)),
+      el('h3', {}, 'Rules'),
+      select(
+        Object.entries(PRESETS).map(([id, p]) => ({ value: id, label: p.label })),
+        s.preset,
+        (v) => { s.preset = v; s.tuning = {}; render(); },
+        { class: 'wide' },
+      ),
+      el('p', { class: 'hint' }, PRESETS[s.preset]?.note || ''),
       el('h3', {}, 'Variants'),
       el('label', { class: 'check' }, [
         el('input', { type: 'checkbox', checked: s.ransom, onchange: (e) => { s.ransom = e.target.checked; } }),
@@ -182,11 +211,7 @@ function setupScreen() {
         el('input', { type: 'checkbox', checked: s.seedFavorEarly, onchange: (e) => { s.seedFavorEarly = e.target.checked; } }),
         ' Seed a Favor into the first three flips (§6 tuning knob)',
       ]),
-      el('label', { class: 'field' }, [
-        el('span', {}, 'Crown strength constant (§10 knob)'),
-        number(s.crownBase, 0, 40, (v) => { s.crownBase = v; }),
-      ]),
-      el('p', { class: 'hint' }, 'v0.1 says 4. Bot testing says the usurpation window opens around round six at 4; raise it to push the coup later and make inheritance a live road.'),
+      advancedPanel(),
       el('label', { class: 'field' }, [
         el('span', {}, 'Seed (optional)'),
         el('input', { type: 'text', value: s.seed, placeholder: 'blank for random', oninput: (e) => { s.seed = e.target.value; } }),
@@ -197,12 +222,52 @@ function setupScreen() {
   ]);
 }
 
+function advancedPanel() {
+  const s = app.settings;
+  const base = resolveTuning(PRESETS[s.preset]?.tuning || {});
+  const live = resolveTuning(activeTuning());
+  const header = el('button', {
+    class: 'court-toggle',
+    onclick: () => { app.advancedOpen = !app.advancedOpen; render(); },
+  }, `${app.advancedOpen ? '▾' : '▸'} Constants`);
+  if (!app.advancedOpen) return el('div', { class: 'advanced' }, [header]);
+
+  return el('div', { class: 'advanced open' }, [
+    header,
+    ...KNOBS.map((knob) => el('label', { class: 'field' }, [
+      el('span', {}, knob.label),
+      el('input', {
+        type: 'number', min: 0, max: 60,
+        value: live[knob.key] === null ? '' : live[knob.key],
+        placeholder: knob.nullable ? 'none' : '',
+        oninput: (e) => {
+          const raw = e.target.value.trim();
+          if (raw === '' && knob.nullable) s.tuning[knob.key] = null;
+          else if (raw === '') delete s.tuning[knob.key];
+          else s.tuning[knob.key] = Number(raw);
+        },
+      }),
+    ])),
+    el('label', { class: 'field' }, [
+      el('span', {}, 'Tax (favorite / neutral / outlaw)'),
+      el('span', { class: 'tax-row' }, ['favorite', 'neutral', 'outlaw'].map((band) => el('input', {
+        type: 'number', min: 0, max: 20, value: live.taxByBand[band], class: 'narrow',
+        oninput: (e) => {
+          s.tuning.taxByBand = { ...(s.tuning.taxByBand || base.taxByBand), [band]: Number(e.target.value) || 0 };
+        },
+      }))),
+    ]),
+    el('p', { class: 'hint' }, 'Changing anything here plays a variant of the game. tools/simulate.js is how these were chosen — it runs bot tournaments over whatever you set.'),
+    el('button', { class: 'ghost small', onclick: () => { s.tuning = {}; render(); } }, 'Back to the preset'),
+  ]);
+}
+
 // ---------------------------------------------------------------- chrome
 
 function topBar(s) {
   const phaseLabel = {
     crownFlip: 'Crown flip', commit: 'Sealed orders', peek: 'Whispers',
-    resolve: 'Reveal & resolve', income: 'Income', gameOver: 'The throne is settled',
+    parley: 'Table talk', resolve: 'Reveal & resolve', income: 'Income', gameOver: 'The throne is settled',
     setup: 'Setup',
   }[s.phase] || s.phase;
   return el('header', { class: 'topbar' }, [
@@ -260,7 +325,7 @@ function playerCard(s, p) {
       ? p.titles.map((t) => el('span', { class: 'title-chip', title: TITLE_BY_ID[t].text }, TITLE_BY_ID[t].name))
       : [el('span', { class: 'title-chip empty' }, 'no titles')]),
     commitment && showOrder
-      ? el('div', { class: 'order-line' }, describeOrder(commitment, (id) => nameOf(s, id)))
+      ? el('div', { class: 'order-line' }, describeOrder(commitment, (id) => nameOf(s, id), s.tuning.pardonCost))
       : commitment
         ? el('div', { class: 'order-line sealed' }, 'orders sealed')
         : null,
@@ -304,7 +369,7 @@ function crownView(s) {
     el('div', { class: 'crown-card' }, [
       el('span', { class: 'crown-card-label' }, 'Last decree'),
       el('h3', {}, card ? CARD_LABEL[card] : '—'),
-      el('p', {}, card ? CARD_TEXT[card] : 'The court has not yet convened.'),
+      el('p', {}, card ? cardText(card, s.tuning) : 'The court has not yet convened.'),
     ]),
     el('div', { class: 'crown-meter' }, [
       el('div', { class: 'meter-row' }, [
@@ -312,9 +377,9 @@ function crownView(s) {
         el('strong', {}, String(crownStrength(s))),
       ]),
       el('div', { class: 'meter' }, [
-        el('div', { class: 'meter-fill', style: `width:${Math.min(100, (crownStrength(s) / (Number(s.options.crownBase) + 12)) * 100)}%` }),
+        el('div', { class: 'meter-fill', style: `width:${Math.min(100, (crownStrength(s) / (s.tuning.crownBase + s.tuning.crownPerCard * s.deckStart)) * 100)}%` }),
       ]),
-      el('div', { class: 'deck-pips' }, Array.from({ length: 12 }, (_, i) => el('span', { class: `pip${i < s.deck.length ? ' full' : ''}` }))),
+      el('div', { class: 'deck-pips' }, Array.from({ length: s.deckStart }, (_, i) => el('span', { class: `pip${i < s.deck.length ? ' full' : ''}` }))),
       el('p', { class: 'hint' }, `${s.deck.length} card${s.deck.length === 1 ? '' : 's'} remain. When the deck runs out, the highest fealty inherits.`),
     ]),
   ]);
@@ -392,6 +457,7 @@ function requestPanel(s) {
   const body = {
     order: () => orderForm(s, me, request, view),
     levy: () => levyForm(s, me, request),
+    offer: () => offerForm(s, request),
     title: () => titleForm(request),
     spoils: () => spoilsForm(s, request),
     peekChoice: () => peekChoiceForm(request),
@@ -411,6 +477,7 @@ function stageTitle(request) {
   return {
     order: 'seal an order',
     levy: 'the levy',
+    offer: 'a proposal',
     title: 'claim a title',
     spoils: 'take your spoils',
     peekChoice: 'what will you look at?',
@@ -437,17 +504,24 @@ function knownIntel(s, view) {
 function orderForm(s, me, request, view) {
   const d = app.draft;
   const legal = request.legal;
+  const t = s.tuning;
+  const ceiling = commitCeiling(s, me);
   const others = s.players.filter((p) => p.id !== me.id);
   const needsTarget = [ORDER.ATTACK, ORDER.SUPPORT, ORDER.RANSOM].includes(d.order);
   const needsGold = [ORDER.ATTACK, ORDER.SUPPORT].includes(d.order);
-  const fixedCost = { [ORDER.PETITION]: request.petitionCost, [ORDER.DEVELOP]: 3 }[d.order] ?? 0;
+  const fixedCost = { [ORDER.PETITION]: request.petitionCost, [ORDER.DEVELOP]: t.developCost }[d.order] ?? 0;
+  const atCeiling = bandOf(me.fealty) !== 'outlaw' && me.fealty >= 3;
 
   const blurb = {
     [ORDER.ATTACK]: 'Commit troops. Your own walls drop to 0 — an army in the field cannot hold a gate.',
     [ORDER.SUPPORT]: 'Your gold joins the target’s attack if they strike, otherwise their defense.',
-    [ORDER.PETITION]: bandOf(me.fealty) === BAND_OUTLAW_KEY ? 'A pardon: 3 gold, straight back to fealty 0, before the swords land.' : '2 gold for one step up the track.',
-    [ORDER.DEVELOP]: '3 gold for one land from the neutral pool. Lands pay every round.',
-    [ORDER.RANSOM]: 'Once per game. Steal 2 gold. Favorites cost you 2 fealty; outlaws pay a bounty of +1.',
+    [ORDER.PETITION]: bandOf(me.fealty) === BAND_OUTLAW_KEY
+      ? `A pardon: ${t.pardonCost} gold, straight back to fealty 0, before the swords land.`
+      : atCeiling
+        ? `You are already at +3. ${t.petitionCost} gold buys you nothing.`
+        : `${t.petitionCost} gold for one step up the track.`,
+    [ORDER.DEVELOP]: `${t.developCost} gold for one land from the neutral pool. Lands pay every round.`,
+    [ORDER.RANSOM]: `Once per game. Steal ${t.ransomTake} gold. Favorites cost you 2 fealty; outlaws pay a bounty of +1.`,
     [ORDER.HOLD]: 'You cannot afford anything else.',
   }[d.order];
 
@@ -456,12 +530,12 @@ function orderForm(s, me, request, view) {
       .filter((o) => legal.includes(o))
       .map((o) => el('button', {
         class: `order-btn${d.order === o ? ' chosen' : ''}`,
-        onclick: () => { d.order = o; if (o === ORDER.PETITION || o === ORDER.DEVELOP) d.gold = 0; else d.gold = Math.max(1, Math.min(d.gold || 1, me.gold)); render(); },
+        onclick: () => { d.order = o; if (o === ORDER.PETITION || o === ORDER.DEVELOP) d.gold = 0; else d.gold = Math.max(1, Math.min(d.gold || 1, ceiling)); render(); },
       }, [
         el('strong', {}, ORDER_LABEL[o]),
         el('span', { class: 'order-cost' }, o === ORDER.PETITION ? `${request.petitionCost} gold`
-          : o === ORDER.DEVELOP ? '3 gold'
-            : o === ORDER.RANSOM ? 'free' : o === ORDER.HOLD ? '—' : '1+ gold'),
+          : o === ORDER.DEVELOP ? `${t.developCost} gold`
+            : o === ORDER.RANSOM ? 'free' : o === ORDER.HOLD ? '—' : `1–${ceiling} gold`),
       ]))),
     el('p', { class: 'blurb' }, blurb),
     needsTarget ? el('label', { class: 'field' }, [
@@ -474,14 +548,16 @@ function orderForm(s, me, request, view) {
       ),
     ]) : null,
     needsGold ? el('label', { class: 'field' }, [
-      el('span', {}, `Gold committed (you hold ${me.gold})`),
+      el('span', {}, t.commitCap && me.gold > ceiling
+        ? `Gold committed (you hold ${me.gold}; no order may carry more than ${t.commitCap})`
+        : `Gold committed (you hold ${me.gold})`),
       el('div', { class: 'gold-row' }, [
         el('input', {
-          type: 'range', min: 1, max: Math.max(1, me.gold), value: Math.min(d.gold || 1, me.gold),
+          type: 'range', min: 1, max: Math.max(1, ceiling), value: Math.min(d.gold || 1, ceiling),
           oninput: (e) => { d.gold = Number(e.target.value); render(); },
         }),
-        el('span', { class: 'gold-value' }, String(Math.min(d.gold || 1, me.gold))),
-        el('button', { class: 'ghost small', onclick: () => { d.gold = me.gold; render(); } }, 'All in'),
+        el('span', { class: 'gold-value' }, String(Math.min(d.gold || 1, ceiling))),
+        el('button', { class: 'ghost small', onclick: () => { d.gold = ceiling; render(); } }, 'All in'),
       ]),
     ]) : null,
     needsGold && d.target === CROWN ? el('p', { class: 'warn' }, `The Crown defends with ${crownStrength(s)} plus any support. Raising a hand against it sets your fealty to −3 either way.`) : null,
@@ -500,14 +576,17 @@ const BAND_OUTLAW_KEY = 'outlaw';
 function attackPreview(s, me, d) {
   const target = s.players.find((p) => p.id === d.target);
   if (!target) return null;
-  const marshal = me.titles.includes('marshal') ? 1 : 0;
-  const punch = bandOf(me.fealty) === 'favorite' && target.fealty < me.fealty ? me.fealty : 0;
-  const strength = (d.gold || 1) + marshal + punch;
-  const warden = target.titles.includes('warden') ? 1 : 0;
-  const consequence = { favorite: '−2 fealty', neutral: 'no fealty change', outlaw: '+1 fealty' }[bandOf(target.fealty)];
+  const t = s.tuning;
+  const marshal = me.titles.includes('marshal') ? t.marshalBonus : 0;
+  const punch = bandOf(me.fealty) === 'favorite' && target.fealty < me.fealty
+    ? Math.round(me.fealty * t.punchDownScale) : 0;
+  const strength = Math.min(d.gold || 1, commitCeiling(s, me)) + marshal + punch;
+  const warden = target.titles.includes('warden') ? t.wardenBonus : 0;
+  const delta = s.tuning.attackFealty[bandOf(target.fealty)];
+  const consequence = delta === 0 ? 'no fealty change' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)} fealty`;
   return el('div', { class: 'preview' }, [
     el('p', {}, `Your strength: ${strength} (${d.gold || 1} gold${marshal ? ' + 1 Marshal' : ''}${punch ? ` + ${punch} punching down` : ''}).`),
-    el('p', {}, `Their walls: 2${warden ? ' + 1 Warden' : ''} — unless they attack too, in which case 0. Support on either side is hidden.`),
+    el('p', {}, `Their walls: ${t.walls}${warden ? ` + ${warden} Warden` : ''} — unless they attack too, in which case 0. Support on either side is hidden.`),
     el('p', {}, `Striking a ${BAND_LABEL[bandOf(target.fealty)].toLowerCase()} costs you ${consequence}.`),
   ]);
 }
@@ -521,6 +600,27 @@ function levyForm(s, me, request) {
     el('button', { class: 'choice', onclick: () => answer('fealty') }, [
       el('strong', {}, 'Drop 1 fealty'),
       el('span', {}, me.fealty <= -3 ? 'You are already at the floor — this costs nothing.' : `You would fall to ${me.fealty - 1}.`),
+    ]),
+  ]);
+}
+
+function offerForm(s, request) {
+  const o = request.offer;
+  const from = s.players.find((p) => p.id === o.from);
+  const what = {
+    joinCoup: 'march on the Crown alongside them this round',
+    attack: `attack ${nameOf(s, o.subject)}`,
+    supportAttack: 'reinforce their attack',
+    supportDefense: 'reinforce their defense',
+    standDown: 'leave them alone this round',
+  }[o.kind] || 'come to an arrangement';
+  return el('div', { class: 'form choices' }, [
+    el('p', { class: 'blurb' }, `${from.name} offers you ${o.gold} gold to ${what}. Nothing about this is binding — on either side.`),
+    el('button', { class: 'choice', onclick: () => answer({ accept: true }) }, [
+      el('strong', {}, `Take the ${o.gold} gold`), el('span', {}, 'Paid now. What you do with your order is still yours to decide.'),
+    ]),
+    el('button', { class: 'choice', onclick: () => answer({ accept: false }) }, [
+      el('strong', {}, 'Refuse'), el('span', {}, 'No coin, no obligation.'),
     ]),
   ]);
 }
@@ -692,30 +792,36 @@ function chronicleView(s) {
 
 function showRules() {
   const dialog = document.getElementById('rules-dialog');
-  if (!dialog.dataset.filled) {
+  const t = app.game ? app.game.state.tuning : resolveTuning(activeTuning());
+  const capLine = t.commitCap
+    ? `No single order may carry more than ${t.commitCap} gold, so no one purse can buy the throne alone.`
+    : 'A single order may carry any amount of gold you hold.';
+  {
     mount(dialog, el('div', { class: 'rules-body' }, [
       el('button', { class: 'ghost close', onclick: () => dialog.close() }, 'Close'),
       el('h2', {}, 'The King’s Graces — quick reference'),
       section('The round', [
         'Crown flip — reveal and resolve one crown card.',
+        'Table talk — anyone may put a proposal to anyone. Gold moves; promises do not bind.',
         'Commit — everyone seals one order. Outlaws then peek and may turn a coat.',
         'Reveal & resolve — petitions and pardons first, then attacks, then spoils.',
         'Income — 1 gold per land; neutrals take 1 more.',
       ]),
       section('Bands', [
         'Favorite (+2, +3): attacks gain +fealty, but only against someone lower than you. Never against the Crown. Titles at +2 and +3, once each.',
-        'Neutral (−1, 0, +1): +1 gold every income step.',
+        `Neutral (−1, 0, +1): +${t.neutralIncome} gold every income step.`,
         'Outlaw (−2, −3): peek before reveal (−2: one order or the top card; −3: both), then one change of orders you may keep or give away. Taxed hardest.',
       ]),
       section('Orders', [
         'Attack [target] — 1+ gold. Your walls drop to 0 this round.',
         'Support [target] — 1+ gold, added to their attack if they strike, otherwise their defense.',
-        'Petition — 2 gold for +1 fealty. As an outlaw it is a pardon: 3 gold, straight to 0, before the swords land.',
-        'Develop — 3 gold for one land from the neutral pool.',
+        `Petition — ${t.petitionCost} gold for +1 fealty. As an outlaw it is a pardon: ${t.pardonCost} gold, straight to 0, before the swords land.`,
+        `Develop — ${t.developCost} gold for one land from the neutral pool.`,
+        capLine,
       ]),
       section('Combat', [
         'Attack = gold + support aimed at you + punching-down bonus + Marshal.',
-        'Defense = walls (2, or 0 if you also attacked) + support aimed at you + Warden.',
+        `Defense = walls (${t.walls}, or 0 if you also attacked) + support aimed at you + Warden.`,
         'Attacker wins on strictly greater. Herald wins its holder every tie.',
         'Spoils: one land, or one title if the loser’s walls were down.',
       ]),
@@ -723,13 +829,18 @@ function showRules() {
         'A favorite: −2 fealty. A neutral: nothing. An outlaw: +1. The Crown: straight to −3.',
       ]),
       section('Usurpation', [
-        'Everyone attacking the Crown pools their strength against 4 + cards remaining (plus support).',
+        `Everyone attacking the Crown pools their strength against ${t.crownBase} + cards remaining (plus support).`,
         'Win: the largest single contributor is crowned. Equal largest: civil war, all to −3.',
         'Lose: every conspirator falls to −3 and forfeits a land.',
       ]),
       section('Titles', TITLES.map((t) => `${t.name} — ${t.text}`)),
       section('Winning', [
         'Usurp the throne, or hold the highest fealty when the crown deck runs out (ties: most lands, then most gold).',
+      ]),
+      section('The crown deck in play', [
+        `${t.deck.tax} Tax — favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}.`,
+        `${t.deck.levy} Levy — pay ${t.levyCost} gold or drop 1 fealty.`,
+        `${t.deck.favor} Favor, ${t.deck.purge} Purge.`,
       ]),
       section('House rulings this build makes', [
         'Support aimed at a player who attacked joins their attack; otherwise it joins their defense.',
@@ -738,7 +849,6 @@ function showRules() {
         'A player with no affordable order may Hold. It is not one of the four orders.',
       ]),
     ]));
-    dialog.dataset.filled = '1';
   }
   dialog.showModal();
 }

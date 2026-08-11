@@ -7,15 +7,29 @@
 // what a DOM is.
 
 import {
-  ATTACK_FEALTY_DELTA, BAND, CARD, CARD_LABEL, COSTS, CROWN, ORDER, ORDER_LABEL,
-  TAX_BY_BAND, TITLE_BY_ID, WALLS, bandOf, clampFealty,
+  BAND, CARD, CARD_LABEL, CROWN, ORDER, ORDER_LABEL,
+  TITLE_BY_ID, bandOf, clampFealty,
 } from './constants.js';
 import {
-  createGame, crownStrength, hasTitle, legalOrders, petitionCostFor, playerById,
-  unclaimedTitles, viewFor,
+  commitCeiling, createGame, crownStrength, hasTitle, legalOrders, petitionCostFor,
+  playerById, unclaimedTitles, viewFor,
 } from './state.js';
 
 const seatOrder = (state) => state.players.slice().sort((a, b) => a.seat - b.seat);
+
+/**
+ * Seat order is fine for bookkeeping, but it must never decide who gets
+ * something scarce. Simultaneous claims — a title two players both just
+ * qualified for, the last land in the pool — are shuffled, with the Herald
+ * first if it is in play, because "lowest seat wins" is a standing advantage
+ * for whoever sits down first.
+ */
+function contested(state, players) {
+  const shuffled = state.rng.shuffle(players);
+  const herald = shuffled.findIndex((p) => hasTitle(p, 'herald'));
+  if (herald > 0) shuffled.unshift(...shuffled.splice(herald, 1));
+  return shuffled;
+}
 
 export class Game {
   /**
@@ -78,6 +92,7 @@ export class Game {
       await this.crownFlip();
       if (s.winner) break;
       await this.pause('crown');
+      await this.parleyPhase();
       await this.commitPhase();
       await this.peekPhase();
       await this.resolvePhase();
@@ -115,8 +130,8 @@ export class Game {
 
   resolveTax() {
     for (const p of seatOrder(this.state)) {
-      let due = TAX_BY_BAND[bandOf(p.fealty)];
-      if (hasTitle(p, 'chancellor')) due = Math.max(0, due - 1);
+      let due = this.state.tuning.taxByBand[bandOf(p.fealty)];
+      if (hasTitle(p, 'chancellor')) due = Math.max(0, due - this.state.tuning.chancellorRelief);
       const paid = Math.min(due, p.gold);
       p.gold -= paid;
       this.state.crownGold += paid;
@@ -128,20 +143,21 @@ export class Game {
   async resolveLevy() {
     for (const p of seatOrder(this.state)) {
       let choice;
-      if (p.gold < COSTS.LEVY) {
+      const levy = this.state.tuning.levyCost;
+      if (p.gold < levy) {
         choice = 'fealty';
       } else {
         choice = await this.ask(p.id, {
           type: 'levy',
-          cost: COSTS.LEVY,
-          text: 'Pay 2 gold to the Crown, or drop 1 fealty.',
+          cost: levy,
+          text: `Pay ${levy} gold to the Crown, or drop 1 fealty.`,
         });
         if (choice !== 'pay' && choice !== 'fealty') choice = 'fealty';
       }
       if (choice === 'pay') {
-        p.gold -= COSTS.LEVY;
-        this.state.crownGold += COSTS.LEVY;
-        this.emit('levy', `${p.name} pays the levy: 2 gold.`);
+        p.gold -= levy;
+        this.state.crownGold += levy;
+        this.emit('levy', `${p.name} pays the levy: ${levy} gold.`);
       } else {
         const before = p.fealty;
         p.fealty = clampFealty(p.fealty - 1);
@@ -193,7 +209,6 @@ export class Game {
     this.setPhase('commit');
     s.commitments = {};
     s.knowledge = {};
-    s.pacts = {};
     s.changeRights = {};
     s.revealed = false;
     for (const p of s.players) s.knowledge[p.id] = { orders: {}, topCard: null };
@@ -202,11 +217,59 @@ export class Game {
       const answer = await this.ask(p.id, {
         type: 'order',
         legal: legalOrders(s, p),
-        petitionCost: petitionCostFor(p),
+        petitionCost: petitionCostFor(s, p),
       });
       this.commit(p.id, answer);
     }
     this.emit('commit', 'All orders are sealed.');
+  }
+
+  /**
+   * Table talk, before anyone seals anything (§3). Every seat gets one chance
+   * to put a proposal to another house. Bots use it to buy the support a coup
+   * needs — the rules make a usurpation a conspiracy, so the bots have to be
+   * able to conspire or the throne can never be taken by anyone but a hoarder.
+   */
+  async parleyPhase() {
+    const s = this.state;
+    s.pacts = {};
+    s.goodwillRound = {};
+    this.setPhase('parley');
+    for (const p of s.rng.shuffle(s.players.slice())) {
+      const controller = this.controllers[p.id];
+      if (!controller || controller.kind !== 'ai') continue; // humans use the court panel
+      const offer = await this.ask(p.id, { type: 'parley', others: s.players.filter((x) => x.id !== p.id).map((x) => x.id) });
+      if (!offer || !offer.to || !this.player(offer.to)) continue;
+      await this.putOffer({ ...offer, from: p.id });
+    }
+  }
+
+  /** Route one offer to its target, whoever is sitting there. */
+  async putOffer(offer) {
+    const s = this.state;
+    const from = this.player(offer.from);
+    const to = this.player(offer.to);
+    const gold = Math.max(0, Math.min(Math.floor(offer.gold || 0), from.gold));
+    const controller = this.controllers[offer.to];
+
+    if (controller?.kind === 'ai') {
+      const { proposeParley } = await import('./diplomacy.js');
+      const result = proposeParley(this, { ...offer, gold });
+      if (result.accepted) this.emit('parley', `${from.name} and ${to.name} come to an understanding.`, { secret: true, pid: offer.from });
+      return result;
+    }
+
+    const answer = await this.ask(offer.to, { type: 'offer', offer: { ...offer, gold } });
+    if (answer?.accept) {
+      if (gold > 0) this.gift(offer.from, offer.to, gold);
+      s.pacts[offer.to] = {
+        kind: offer.kind, subject: offer.subject || null, with: offer.from, paid: gold, expected: offer.expected ?? 2,
+      };
+      this.emit('parley', `${to.name} accepts ${from.name}'s proposal.`);
+      return { accepted: true };
+    }
+    this.emit('parley', `${to.name} turns ${from.name} down.`, { secret: true, pid: offer.to });
+    return { accepted: false };
   }
 
   /** Validate + escrow an order. Committed gold is spent immediately (§3). */
@@ -220,12 +283,12 @@ export class Game {
     if (order === ORDER.ATTACK || order === ORDER.SUPPORT) {
       const targets = s.players.filter((x) => x.id !== pid).map((x) => x.id).concat(CROWN);
       if (!targets.includes(target)) target = targets[0];
-      gold = Math.max(1, Math.min(Math.floor(gold) || 1, p.gold));
+      gold = Math.max(1, Math.min(Math.floor(gold) || 1, commitCeiling(s, p)));
     } else if (order === ORDER.PETITION) {
-      gold = petitionCostFor(p);
+      gold = petitionCostFor(s, p);
       target = null;
     } else if (order === ORDER.DEVELOP) {
-      gold = COSTS.DEVELOP;
+      gold = s.tuning.developCost;
       target = null;
     } else if (order === ORDER.RANSOM) {
       const targets = s.players.filter((x) => x.id !== pid).map((x) => x.id).concat(CROWN);
@@ -300,7 +363,7 @@ export class Game {
           const next = await this.ask(p.id, {
             type: 'order',
             legal: legalOrders(s, { ...p, gold: p.gold + p.escrow }),
-            petitionCost: petitionCostFor(p),
+            petitionCost: petitionCostFor(s, p),
             reason: 'turncoat',
           });
           this.recommit(p.id, next);
@@ -321,7 +384,7 @@ export class Game {
               const next = await this.ask(to.id, {
                 type: 'order',
                 legal: legalOrders(s, { ...to, gold: to.gold + to.escrow }),
-                petitionCost: petitionCostFor(to),
+                petitionCost: petitionCostFor(s, to),
                 reason: 'turncoat',
               });
               this.recommit(to.id, next);
@@ -365,7 +428,7 @@ export class Game {
     s.revealed = true;
     for (const p of seatOrder(s)) {
       const c = s.commitments[p.id];
-      this.emit('reveal', `${p.name}: ${describeOrder(c, (id) => this.nameOf(id))}.`);
+      this.emit('reveal', `${p.name}: ${describeOrder(c, (id) => this.nameOf(id), s.tuning.pardonCost)}.`);
     }
 
     // Bands are read at resolution time (§2). Petitions move fealty first, so
@@ -397,7 +460,7 @@ export class Game {
       if (!c || c.order !== ORDER.PETITION) continue;
       if (bandsAtStart[p.id] === BAND.OUTLAW) {
         p.fealty = 0;
-        this.emit('petition', `${p.name} buys a pardon for 3 gold and returns to fealty 0.`);
+        this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0.`);
       } else {
         p.fealty = clampFealty(p.fealty + 1);
         this.emit('petition', `${p.name} petitions the Crown: fealty ${fmt(p.fealty)}.`);
@@ -410,13 +473,13 @@ export class Game {
         if (!c || c.order !== ORDER.RANSOM) continue;
         p.ransomUsed = true;
         if (c.target === CROWN) {
-          p.gold += 5;
+          p.gold += s.tuning.ransomCrownGold;
           p.fealty = -3;
-          this.emit('ransom', `${p.name} ransoms the Crown's own coffers: +5 gold, fealty −3.`);
+          this.emit('ransom', `${p.name} ransoms the Crown's own coffers: +${s.tuning.ransomCrownGold} gold, fealty −3.`);
           continue;
         }
         const victim = this.player(c.target);
-        const taken = Math.min(2, victim.gold);
+        const taken = Math.min(s.tuning.ransomTake, victim.gold);
         victim.gold -= taken;
         p.gold += taken;
         let note = '';
@@ -465,12 +528,12 @@ export class Game {
     const p = this.player(pid);
     const c = s.commitments[pid];
     let str = c.gold + (support.toAttack[pid] || 0);
-    if (hasTitle(p, 'marshal')) str += 1;
+    if (hasTitle(p, 'marshal')) str += s.tuning.marshalBonus;
     if (!targetIsCrown) {
       // §2 favorite punching-down bonus.
       const me = fealtyNow[pid];
       const them = fealtyNow[c.target];
-      if (bands[pid] === BAND.FAVORITE && them < me) str += me;
+      if (bands[pid] === BAND.FAVORITE && them < me) str += Math.round(me * s.tuning.punchDownScale);
     }
     return str;
   }
@@ -480,9 +543,9 @@ export class Game {
     const p = this.player(pid);
     const c = s.commitments[pid];
     const inTheField = c && c.order === ORDER.ATTACK;
-    let def = inTheField ? 0 : WALLS;
+    let def = inTheField ? 0 : s.tuning.walls;
     def += support.toDefense[pid] || 0;
-    if (hasTitle(p, 'warden')) def += 1;
+    if (hasTitle(p, 'warden')) def += s.tuning.wardenBonus;
     return { def, wallsDown: inTheField };
   }
 
@@ -637,16 +700,10 @@ export class Game {
     const s = this.state;
     const developers = seatOrder(s).filter((p) => s.commitments[p.id]?.order === ORDER.DEVELOP);
     if (developers.length === 0) return;
-    const ordered = developers.slice().sort((a, b) => {
-      const ah = hasTitle(a, 'herald') ? 1 : 0;
-      const bh = hasTitle(b, 'herald') ? 1 : 0;
-      if (ah !== bh) return bh - ah;
-      return s.rng() - 0.5;
-    });
-    for (const p of ordered) {
+    for (const p of contested(s, developers)) {
       if (s.neutralPool <= 0) {
-        p.gold += COSTS.DEVELOP; // nothing left to buy; the purse comes home
-        this.emit('develop', `${p.name} finds no unclaimed land left to settle; the 3 gold is returned.`);
+        p.gold += s.tuning.developCost; // nothing left to buy; the purse comes home
+        this.emit('develop', `${p.name} finds no unclaimed land left to settle; the ${s.tuning.developCost} gold is returned.`);
         continue;
       }
       s.neutralPool -= 1;
@@ -668,7 +725,7 @@ export class Game {
         }
         continue;
       }
-      const delta = ATTACK_FEALTY_DELTA[bands[c.target]];
+      const delta = s.tuning.attackFealty[bands[c.target]];
       if (delta === 0) continue;
       const before = p.fealty;
       p.fealty = clampFealty(p.fealty + delta);
@@ -681,7 +738,9 @@ export class Game {
   /** §2 — title grants at +2 and +3, once each per player, ever. */
   async grantTitles() {
     const s = this.state;
-    for (const p of seatOrder(s)) {
+    const claimants = seatOrder(s).filter((p) => (p.fealty >= 2 && !p.titleGrants[2]) || (p.fealty >= 3 && !p.titleGrants[3]));
+    if (claimants.length === 0) return;
+    for (const p of contested(s, claimants)) {
       for (const threshold of [2, 3]) {
         if (p.fealty < threshold || p.titleGrants[threshold]) continue;
         const available = unclaimedTitles(s);
@@ -708,15 +767,15 @@ export class Game {
     const s = this.state;
     this.setPhase('income');
     for (const p of seatOrder(s)) {
-      let income = p.lands;
-      const bits = [`${p.lands} from land`];
-      if (bandOf(p.fealty) === BAND.NEUTRAL) {
-        income += 1;
-        bits.push('1 for keeping their head down');
+      let income = p.lands * s.tuning.landIncome;
+      const bits = [`${income} from land`];
+      if (bandOf(p.fealty) === BAND.NEUTRAL && s.tuning.neutralIncome) {
+        income += s.tuning.neutralIncome;
+        bits.push(`${s.tuning.neutralIncome} for keeping their head down`);
       }
-      if (hasTitle(p, 'steward')) {
-        income += 1;
-        bits.push('1 as Steward');
+      if (hasTitle(p, 'steward') && s.tuning.stewardIncome) {
+        income += s.tuning.stewardIncome;
+        bits.push(`${s.tuning.stewardIncome} as Steward`);
       }
       p.gold += income;
       p.escrow = 0;
@@ -764,13 +823,13 @@ export class Game {
   }
 }
 
-export function describeOrder(c, nameOf) {
+export function describeOrder(c, nameOf, pardonCost = 3) {
   if (!c) return 'no order';
   switch (c.order) {
     case ORDER.ATTACK: return `Attack ${nameOf(c.target)} with ${c.gold} gold`;
     case ORDER.SUPPORT: return `Support ${nameOf(c.target)} with ${c.gold} gold`;
-    case ORDER.PETITION: return c.gold >= COSTS.PARDON ? 'Petition (pardon, 3 gold)' : 'Petition (2 gold)';
-    case ORDER.DEVELOP: return 'Develop (3 gold)';
+    case ORDER.PETITION: return c.gold >= pardonCost ? `Petition (pardon, ${c.gold} gold)` : `Petition (${c.gold} gold)`;
+    case ORDER.DEVELOP: return `Develop (${c.gold} gold)`;
     case ORDER.RANSOM: return `Ransom ${nameOf(c.target)}`;
     default: return 'Hold';
   }

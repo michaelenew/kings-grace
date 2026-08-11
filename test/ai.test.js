@@ -2,21 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Game } from '../src/engine/game.js';
-import { createGame } from '../src/engine/state.js';
-import { createAI } from '../src/engine/ai.js';
+import { createGame, crownStrength } from '../src/engine/state.js';
+import { createAI, saltFor } from '../src/engine/ai.js';
 import { proposeParley } from '../src/engine/diplomacy.js';
-import { CROWN, ORDER, PERSONALITIES, SETUP, TITLES } from '../src/engine/constants.js';
+import { CROWN, ORDER, PERSONALITIES, PLAYERS, TITLES } from '../src/engine/constants.js';
+import { PRESETS, V0_1 } from '../src/engine/tuning.js';
 
-const TOTAL_LANDS = SETUP.PLAYERS * SETUP.START_LANDS + SETUP.NEUTRAL_POOL;
+const TOTAL_LANDS = PLAYERS * V0_1.startLands + V0_1.neutralPool;
 
-function botGame(seed, options = {}) {
+function botGame(seed, options = {}, tuning = {}) {
+  const { crownBase, ...rest } = options;
   const state = createGame({
     seed,
-    options,
+    tuning: crownBase === undefined ? tuning : { ...tuning, crownBase },
+    options: rest,
     seats: PERSONALITIES.map((personality) => ({ kind: 'ai', personality })),
   });
   const controllers = {};
-  state.players.forEach((p) => { controllers[p.id] = createAI(p.personality); });
+  state.players.forEach((p) => {
+    controllers[p.id] = createAI(p.personality, 'opportunist', saltFor(state.seed, p.seat));
+  });
   return new Game({ state, controllers });
 }
 
@@ -62,41 +67,74 @@ test('games are reproducible from a seed', async () => {
   assert.equal(await summary(), await summary());
 });
 
-// Balance canaries, not rules checks. With the v0.1 constant of 4, bot war
-// chests outrun the decaying crown and every game ends in a coup around round
-// six — the exact failure mode §10 asks a first playtest to watch for.
-test('with the v0.1 crown constant, the coup window always opens', async () => {
-  const hows = new Set();
-  for (let seed = 1; seed <= 30; seed++) {
-    const g = botGame(seed);
-    const w = await g.run();
-    hows.add(w ? w.how : 'civil-war');
+// Balance lives in test/balance.test.js; these are bot-correctness checks.
+
+test('bots never coup into a crown they cannot possibly beat', async () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const game = botGame(seed, {});
+    const originalCommit = game.commit.bind(game);
+    game.commit = (pid, answer) => {
+      const c = originalCommit(pid, answer);
+      if (c.order === ORDER.ATTACK && c.target === CROWN) {
+        const me = game.state.players.find((p) => p.id === pid);
+        const help = Object.values(game.state.pacts).some((pact) => pact.with === pid);
+        const reach = c.gold + (me.titles.includes('marshal') ? 1 : 0);
+        assert.ok(
+          help || reach + 1 >= crownStrength(game.state),
+          `${pid} threw ${reach} at a crown of ${crownStrength(game.state)} with nobody behind them`,
+        );
+      }
+      return c;
+    };
+    await game.run();
   }
-  assert.deepEqual([...hows], ['usurp']);
 });
 
-test('the crown constant moves the usurpation window monotonically', async () => {
-  const meanEnd = async (crownBase) => {
-    let total = 0;
-    for (let seed = 1; seed <= 20; seed++) {
-      const g = botGame(seed, { crownBase });
-      await g.run();
-      total += g.state.round;
-    }
-    return total / 20;
-  };
-  const [low, mid, high] = [await meanEnd(4), await meanEnd(14), await meanEnd(30)];
-  assert.ok(low < mid && mid < high, `expected the window to slide later: ${low} ${mid} ${high}`);
+test('a commitment cap is never exceeded, by bot or by engine', async () => {
+  for (let seed = 1; seed <= 25; seed++) {
+    const state = createGame({
+      seed,
+      tuning: { commitCap: 4 },
+      seats: PERSONALITIES.map((personality) => ({ kind: 'ai', personality })),
+    });
+    const controllers = {};
+    state.players.forEach((p) => { controllers[p.id] = createAI(p.personality, 'opportunist', saltFor(state.seed, p.seat)); });
+    const game = new Game({ state, controllers });
+    const originalCommit = game.commit.bind(game);
+    game.commit = (pid, answer) => {
+      const c = originalCommit(pid, answer);
+      if (c.order === ORDER.ATTACK || c.order === ORDER.SUPPORT) {
+        assert.ok(c.gold <= 4, `${pid} committed ${c.gold} past a cap of 4`);
+      }
+      return c;
+    };
+    await game.run();
+  }
 });
 
-test('a strong enough crown reopens the road of inheritance', async () => {
-  const hows = new Set();
-  for (let seed = 1; seed <= 30; seed++) {
-    const g = botGame(seed, { crownBase: 30 });
-    const w = await g.run();
-    hows.add(w ? w.how : 'civil-war');
+// Under v0.1 a coup is either hopeless or already affordable alone, so nobody
+// needs an ally. The tuned preset caps what one order can carry, which is what
+// makes buying a sword the only way onto the throne.
+test('bots buy the support a coup needs, and the gold really moves', async () => {
+  let pactsSeen = 0;
+  let goldMoved = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const game = botGame(seed, {}, PRESETS.tuned.tuning);
+    game.subscribe(() => {});
+    const originalPut = game.putOffer.bind(game);
+    game.putOffer = async (offer) => {
+      const before = game.player(offer.to).gold;
+      const result = await originalPut(offer);
+      if (result?.accepted) {
+        pactsSeen += 1;
+        goldMoved += game.player(offer.to).gold - before;
+      }
+      return result;
+    };
+    await game.run();
   }
-  assert.ok(hows.has('inherit'), `expected some inheritance, saw ${[...hows]}`);
+  assert.ok(pactsSeen > 0, 'bots never struck a bargain across 60 games');
+  assert.ok(goldMoved > 0, 'bargains were struck but no gold changed hands');
 });
 
 test('bots only ever commit orders they can afford', async () => {

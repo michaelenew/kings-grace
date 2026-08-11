@@ -95,6 +95,12 @@ input[type="range"] { accent-color: var(--gold); flex: 1; }
 .check { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .4rem; color: var(--ink-dim); }
 .check input { margin-top: .3rem; accent-color: var(--gold); }
 .field { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin: .5rem 0; }
+.field input[type="number"] { width: 5.5rem; }
+select.wide { width: 100%; }
+.advanced { margin: .6rem 0; border-top: 1px dashed var(--line); padding-top: .5rem; }
+.advanced.open { display: grid; gap: .1rem; }
+.tax-row { display: flex; gap: .3rem; }
+.tax-row input { width: 3.4rem; }
 .field > span { color: var(--ink-dim); }
 
 /* ---------------------------------------------------------------- chrome */

@@ -28,10 +28,11 @@ export function stub(map = {}) {
 }
 
 /** Four seats, all scripted. `controllers` may be a map of pid -> stub map. */
-export function makeGame({ seed = 7, options = {}, controllers = {}, setup } = {}) {
+export function makeGame({ seed = 7, options = {}, tuning = {}, controllers = {}, setup } = {}) {
   const state = createGame({
     seed,
     options,
+    tuning,
     seats: [0, 1, 2, 3].map(() => ({ kind: 'human' })),
   });
   const ctrls = {};

@@ -44,12 +44,22 @@ export const CARD_LABEL = {
   [CARD.PURGE]: 'Purge',
 };
 
-export const CARD_TEXT = {
-  [CARD.TAX]: 'Favorites pay 1, neutrals 2, outlaws 3. Chancellor pays 1 less (min 0).',
-  [CARD.LEVY]: 'Each player pays 2 gold to the Crown or drops 1 fealty.',
-  [CARD.FAVOR]: 'The single highest-fealty player takes one land from the neutral pool. Tie: no effect.',
-  [CARD.PURGE]: 'The single lowest-fealty player forfeits one land to the Crown. Tie: no effect.',
-};
+/** Card text for the tuning actually in play, not the numbers on the sheet. */
+export function cardText(card, tuning) {
+  const t = tuning;
+  switch (card) {
+    case CARD.TAX:
+      return `Favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}. Chancellor pays ${t.chancellorRelief} less (min 0).`;
+    case CARD.LEVY:
+      return `Each player pays ${t.levyCost} gold to the Crown or drops 1 fealty.`;
+    case CARD.FAVOR:
+      return 'The single highest-fealty player takes one land from the neutral pool. Tie: no effect.';
+    case CARD.PURGE:
+      return 'The single lowest-fealty player forfeits one land to the Crown. Tie: no effect.';
+    default:
+      return '';
+  }
+}
 
 /** Titles (§7). Six unique, granted at fealty thresholds, stealable in combat. */
 export const TITLES = [
@@ -63,33 +73,9 @@ export const TITLES = [
 
 export const TITLE_BY_ID = Object.fromEntries(TITLES.map((t) => [t.id, t]));
 
-/** Setup (§1). */
-export const SETUP = {
-  PLAYERS: 4,
-  START_LANDS: 3,
-  START_GOLD: 5,
-  START_FEALTY: 0,
-  NEUTRAL_POOL: 8,
-  DECK: { [CARD.TAX]: 4, [CARD.LEVY]: 4, [CARD.FAVOR]: 3, [CARD.PURGE]: 1 },
-};
-
-export const COSTS = {
-  PETITION: 2,
-  PARDON: 3,
-  DEVELOP: 3,
-  LEVY: 2,
-};
-
-export const WALLS = 2; // §5
-export const CROWN_BASE = 4; // crown strength = CROWN_BASE + cards remaining (§1)
+export const PLAYERS = 4;
 export const FEALTY_MIN = -3;
 export const FEALTY_MAX = 3;
-
-export const TAX_BY_BAND = {
-  [BAND.FAVORITE]: 1,
-  [BAND.NEUTRAL]: 2,
-  [BAND.OUTLAW]: 3,
-};
 
 /** Fealty change for the attacker, keyed by the target's band at resolution (§4). */
 export const ATTACK_FEALTY_DELTA = {
