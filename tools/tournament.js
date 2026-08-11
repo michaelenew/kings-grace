@@ -13,6 +13,7 @@ import { DOCTRINE_NAMES, createAI, saltFor } from '../src/engine/ai.js';
 import { BAND, CROWN, ORDER, PERSONALITIES, bandOf } from '../src/engine/constants.js';
 import { resolveTuning } from '../src/engine/tuning.js';
 import { makeRng } from '../src/engine/rng.js';
+import { blankTally, summariseEnjoyment, watchEnjoyment } from './enjoyment.js';
 
 const POOL = DOCTRINE_NAMES.filter((d) => d !== 'opportunist');
 
@@ -103,6 +104,10 @@ function imbalance(s, players = 4) {
     add(Math.max(0, 18 - v) * 1.3, `${k}-empty`);
     add(Math.max(0, v - 50) * 1.3, `${k}-crowd`);
   }
+  // And whether any of it is fun: the shape of a winner's turns against
+  // 40/40/20, whether they needed all three lanes, and whether the board they
+  // were choosing from was affordable. See tools/enjoyment.js.
+  if (s.fun) add((100 - s.fun.score) * 1.2, 'no-fun');
   return { penalty, notes };
 }
 
@@ -129,6 +134,7 @@ function blankStats() {
     seatGames: [0, 0, 0, 0, 0, 0],
     choices: 0,
     starved: 0,
+    fun: blankTally(),
     heraldGames: 0,
     heraldWins: 0,
     byTitle: {},
@@ -143,7 +149,7 @@ function noteDoctrine(stats, doctrine) {
   return stats.byDoctrine[doctrine];
 }
 
-async function runGame(seed, tuning, options, doctrinePool, players = 4) {
+async function runGame(seed, tuning, options, doctrinePool, players = 4, fun = null) {
   const rng = makeRng(seed ^ 0x9e3779b9);
   const chosen = Array.from({ length: players }, (_, i) => rng.shuffle(doctrinePool)[i % doctrinePool.length]);
   const personalities = rng.shuffle(PERSONALITIES);
@@ -184,7 +190,9 @@ async function runGame(seed, tuning, options, doctrinePool, players = 4) {
     for (const p of game.state.players) bandRounds[bandOf(p.fealty)] += 1;
     samples += 1;
   };
+  const finishFun = fun ? watchEnjoyment(game, fun) : null;
   const winner = await game.run();
+  if (finishFun) finishFun(winner);
   return { state, winner, doctrines: chosen, bandRounds, samples, choices, starved };
 }
 
@@ -262,7 +270,7 @@ async function tournament(tuningOverride, { n, ransom, doctrines, players = 4 })
   const stats = blankStats();
   const pool = doctrines || POOL;
   for (let seed = 1; seed <= n; seed++) {
-    measure(stats, await runGame(seed, tuningOverride, { ransom }, pool, players));
+    measure(stats, await runGame(seed, tuningOverride, { ransom }, pool, players, stats.fun));
   }
   const totalOrders = Object.entries(stats.orders)
     .filter(([k]) => k !== 'attackCrown')
@@ -310,6 +318,7 @@ async function tournament(tuningOverride, { n, ransom, doctrines, players = 4 })
       titleSpread,
       doctrineBaseline: baseline,
       meanWinnerFealty: mean(stats.winnerFealty),
+      fun: summariseEnjoyment(stats.fun),
     },
   };
 }
@@ -341,6 +350,15 @@ function detail(name, s) {
   console.log('  coronets    ', `${s.titlesTakenPerGame.toFixed(2)} taken by sword, ${s.titlesClaimedPerGame.toFixed(2)} claimed by grant, per game`);
   console.log('  title edge  ', s.titleRates.map((t) => `${t.name} ${t.edge.toFixed(2)}x`).join('  '),
     `  spread ${s.titleSpread.toFixed(2)}x`);
+  const f = s.fun;
+  const mix = (m) => `build ${(100 * m.build).toFixed(0)}%  attack ${(100 * m.attack).toFixed(0)}%  connive ${(100 * m.connive).toFixed(0)}%`;
+  console.log('  winners do  ', mix(f.winnerMix),
+    `   (target build 40%  attack 40%  connive 20%)`);
+  console.log('  the table   ', mix(f.tableMix),
+    `   building splits ${(100 * f.winnerBuildSplit.develop).toFixed(0)}% land / ${(100 * f.winnerBuildSplit.appeal).toFixed(0)}% favour`);
+  console.log('  enjoyment   ', `${f.score.toFixed(0)}/100`,
+    `(mix ${f.mixScore.toFixed(0)}/50  breadth ${f.breadthScore.toFixed(0)}/25  options ${f.optionScore.toFixed(0)}/25)`,
+    f.notes.length ? `— ${f.notes.join('; ')}` : '');
   console.log('  seats       ', s.seatRates.map((r) => `${r.toFixed(0)}%`).join(' '),
     '  mean winner fealty', s.meanWinnerFealty.toFixed(1),
     '  mean end gold', s.meanEndGold.toFixed(1),
