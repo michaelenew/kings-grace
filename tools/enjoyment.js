@@ -14,10 +14,15 @@
 // its best when the road to victory runs through all three. The target for a
 // *winner's* turns is 40% building, 40% attacking, 20% conniving.
 //
-// THE BREADTH. An average that lands on 40/40/20 can be made of one house that
-// only farmed and another that only fought. So a winner is also scored on their
-// thinnest lane: a strategy that never once needed to do one of the three is not
-// the game asking for all three.
+// THE BREADTH, which is a question about the *distribution* of winners rather
+// than the average of them. An average that lands on 40/40/20 can be made of
+// one house that only farmed and another that only fought — so most winners
+// should have had to do all three. But not all of them: a game where the
+// balanced split is the only line that ever wins has no strategy in it, only
+// execution. Skipping a lane should be a real road and a road less travelled.
+//
+// So this scores two things at once. Most winners used every lane, and a
+// minority did not.
 //
 // THE OPTIONS. Being priced out of half your board most turns is not a
 // decision, it is a queue. Measured as the share of the four standing orders a
@@ -65,7 +70,7 @@ export function blankTally() {
     // both "building" but they are not the same activity, and one of them runs
     // out halfway through the game.
     winnerBuild: { develop: 0, appeal: 0 },
-    thinnestLane: [], // per winner, the share of their smallest of the three
+    winnerMixes: [], // per winner, their own three-way split
     optionShare: 0, // summed share of the four orders that were affordable
     optionTurns: 0,
     pinchedTurns: 0, // turns with two or fewer of the four available
@@ -139,7 +144,12 @@ export function watchEnjoyment(game, tally) {
       }
       const live = bucket.build + bucket.attack + bucket.connive;
       if (live > 0) {
-        tally.thinnestLane.push(Math.min(bucket.build, bucket.attack, bucket.connive) / live);
+        tally.winnerMixes.push({
+          build: bucket.build / live,
+          attack: bucket.attack / live,
+          connive: bucket.connive / live,
+          how: winner?.how ?? 'none',
+        });
       }
     }
   };
@@ -166,6 +176,23 @@ function legalCore(state, player) {
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
+/**
+ * A trapezoid: nothing below `zeroLo`, everything between `fullLo` and
+ * `fullHi`, nothing again above `zeroHi`. For quantities where both too little
+ * and too much are failures and there is a comfortable band in between.
+ */
+function band(x, zeroLo, fullLo, fullHi, zeroHi) {
+  if (x <= zeroLo || x >= zeroHi) return 0;
+  if (x < fullLo) return (x - zeroLo) / (fullLo - zeroLo);
+  if (x > fullHi) return (zeroHi - x) / (zeroHi - fullHi);
+  return 1;
+}
+
+/** A lane counts as used if it took at least this share of a winner's turns. */
+const LANE_FLOOR = 0.12;
+/** And as skipped if it took less than this. */
+const LANE_SKIPPED = 0.05;
+
 /** Fold a finished tally into shares and a 0–100 score. */
 export function summariseEnjoyment(tally) {
   const live = (b) => b.build + b.attack + b.connive;
@@ -184,7 +211,38 @@ export function summariseEnjoyment(tally) {
     + Math.abs(winnerMix.attack - MIX_TARGET.attack)
     + Math.abs(winnerMix.connive - MIX_TARGET.connive));
 
-  const thinnest = mean(tally.thinnestLane);
+  const mixes = tally.winnerMixes;
+  const thinnestOf = (m) => Math.min(m.build, m.attack, m.connive);
+  const thinnest = mean(mixes.map(thinnestOf));
+  // The main line: winners who had to do all three.
+  const roundedAll = mixes.filter((m) => thinnestOf(m) >= LANE_FLOOR).length;
+  const usedAll = mixes.length ? roundedAll / mixes.length : 0;
+  // The roads less travelled: winners who genuinely skipped one.
+  const skipped = mixes.filter((m) => thinnestOf(m) < LANE_SKIPPED);
+  const skippers = mixes.length ? skipped.length / mixes.length : 0;
+  // Which lane the deviants leave out. If it is always the same one, that lane
+  // is not an alternative road, it is a tax people are dodging.
+  const skippedLane = { build: 0, attack: 0, connive: 0 };
+  for (const m of skipped) {
+    const worst = ['build', 'attack', 'connive'].sort((a, b) => m[a] - m[b])[0];
+    skippedLane[worst] += 1;
+  }
+  // Split by which road they took, because the two roads to the throne may
+  // simply *be* two of the three lanes — in which case skipping one is the
+  // design working, not failing.
+  const byRoad = {};
+  for (const road of ['usurp', 'inherit']) {
+    const of = mixes.filter((m) => m.how === road);
+    byRoad[road] = {
+      share: mixes.length ? of.length / mixes.length : 0,
+      usedAll: of.length ? of.filter((m) => thinnestOf(m) >= LANE_FLOOR).length / of.length : 0,
+      mix: {
+        build: mean(of.map((m) => m.build)),
+        attack: mean(of.map((m) => m.attack)),
+        connive: mean(of.map((m) => m.connive)),
+      },
+    };
+  }
   const optionShare = tally.optionTurns ? tally.optionShare / tally.optionTurns : 0;
   const pinched = tally.optionTurns ? tally.pinchedTurns / tally.optionTurns : 0;
 
@@ -192,7 +250,12 @@ export function summariseEnjoyment(tally) {
   // play on. A quarter of the score sits on options because being priced out is
   // the complaint that does not show up anywhere else in tools/.
   const mixScore = 50 * clamp(1 - drift / 0.5, 0, 1);
-  const breadthScore = 25 * clamp(thinnest / 0.15, 0, 1);
+  // 18 for the main line being a genuine split, 7 for the alternative roads
+  // existing without taking over. Skipping a lane is meant to be a real option
+  // and a rare one, so both "nobody can" and "everybody does" score zero.
+  const mainLine = 18 * clamp(usedAll / 0.75, 0, 1);
+  const openRoads = 7 * band(skippers, 0.02, 0.08, 0.25, 0.45);
+  const breadthScore = mainLine + openRoads;
   const optionScore = 25 * clamp((optionShare - 0.5) / 0.25, 0, 1);
   const score = mixScore + breadthScore + optionScore;
 
@@ -203,13 +266,19 @@ export function summariseEnjoyment(tally) {
       notes.push(`${lane} ${off(lane) > 0 ? 'over' : 'under'} by ${Math.abs(100 * off(lane)).toFixed(0)}pt`);
     }
   }
-  if (thinnest < 0.15) notes.push(`winners can skip a lane (thinnest ${(100 * thinnest).toFixed(0)}%)`);
+  if (usedAll < 0.75) notes.push(`only ${(100 * usedAll).toFixed(0)}% of winners used all three lanes`);
+  if (skippers < 0.02) notes.push('no winner ever skips a lane — one line and no strategy');
+  else if (skippers > 0.25) {
+    const worst = Object.entries(skippedLane).sort((a, b) => b[1] - a[1])[0];
+    notes.push(`${(100 * skippers).toFixed(0)}% of winners skip a lane outright, usually ${worst[0]}`);
+  }
   if (optionShare < 0.75) notes.push(`only ${(100 * optionShare).toFixed(0)}% of the board affordable`);
   if (pinched > 0.2) notes.push(`${(100 * pinched).toFixed(0)}% of turns down to two orders`);
 
   return {
-    score, mixScore, breadthScore, optionScore,
-    winnerMix, tableMix, thinnest, optionShare, pinched, idleShare, drift,
+    score, mixScore, breadthScore, optionScore, mainLine, openRoads,
+    winnerMix, tableMix, thinnest, usedAll, skippers, skippedLane, byRoad,
+    optionShare, pinched, idleShare, drift,
     winnerBuildSplit: {
       develop: tally.winnerBuild.develop / Math.max(1, tally.winnerBuild.develop + tally.winnerBuild.appeal),
       appeal: tally.winnerBuild.appeal / Math.max(1, tally.winnerBuild.develop + tally.winnerBuild.appeal),

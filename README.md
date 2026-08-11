@@ -134,6 +134,30 @@ moved more than every constant in the game put together: battles 5.5 -> 7.3,
 outlaw band occupancy 8% -> 18%, doctrine spread 33pt -> 25pt. Adding plunder on
 top took battles to 8.9 and the spread to 12pt.
 
+**The aggregate mix is a mirage, and the distribution says so.** A winner's
+turns average build 41 / attack 28 / connive 31, which looks like a game where
+everyone does a bit of everything. Split by which road they took, it is nothing
+of the kind:
+
+| | Building | Attacking | Conniving | Used all three lanes |
+|---|---|---|---|---|
+| Usurpers | 39% | **48%** | 14% | 34% |
+| Inheritors | 44% | **12%** | 45% | 33% |
+
+The two roads have opposite shapes and the "balanced" average is the mean of
+them. Only a third of winners used all three lanes and 44% skipped one outright
+— and the skipped lane is **never building**. It is attacking 57% of the time,
+rising to **90%** when the bots are given no committed doctrine at all. So this
+is not the doctrines specialising: a flexible player who wins simply never
+needed to fight. You cannot win this game without building and you can win it
+without ever drawing a sword.
+
+Raising the price of an appeal fixes the *average* (the mix component goes from
+38/50 to 44/50) and makes the distribution **worse** — winners specialise harder
+when they are poorer, and the skipped lane just moves from attacking to
+conniving. Mix and breadth are separate problems and only one of them is a
+constant away.
+
 **The back half was the problem, so there is less of it.** The deck went from
 twelve cards to ten — 3 Tax, 4 Levy, 3 Favor — which took the enjoyment score
 from 72 to 79 and put a winner's building turns on target for the first time,

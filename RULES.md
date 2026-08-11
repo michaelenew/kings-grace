@@ -386,6 +386,31 @@ The bands came back too: the outlaw band went from 8% of all player-rounds to
 18%, because the shadow's payoff is immediate and the shadow was being priced
 against an eleven-round land habit.
 
+### The one thing constants have not fixed
+
+Skipping a lane should be a road less travelled, not the main road. It is
+currently the main road. Only a third of winners use all three lanes, 44% skip
+one outright, and the skipped one is **never building** — it is attacking 57% of
+the time, and 90% of the time when the bots carry no committed doctrine, which
+rules out "the doctrines are specialists" as the explanation.
+
+Split by road, the reason is plain:
+
+| | Building | Attacking | Conniving |
+|---|---|---|---|
+| Usurpers | 39% | 48% | 14% |
+| Inheritors | 44% | 12% | 45% |
+
+**The two roads to the throne are two of the three lanes.** Inheriting is
+climbing and dealing; usurping is climbing and fighting. Neither road needs the
+third thing, so the balanced 40/40/20 average is just the midpoint of two
+lopsided lines rather than a description of anybody's game.
+
+No constant reaches this. What would is a rule that makes each road need the
+lane it currently skips — an inheritance that cannot be won without having taken
+something by force, or a throne that cannot be seized without somebody else's
+consent. That is a rules change and it is not made here.
+
 ### The deck went from twelve cards to ten
 
 The back half was the problem all along, and the cheapest fix for a bad back

@@ -381,8 +381,19 @@ function detail(name, s) {
     `   (target build 40%  attack 40%  connive 20%)`);
   console.log('  the table   ', mix(f.tableMix),
     `   building splits ${(100 * f.winnerBuildSplit.develop).toFixed(0)}% land / ${(100 * f.winnerBuildSplit.appeal).toFixed(0)}% favour`);
+  const sk = f.skippedLane;
+  const skTotal = sk.build + sk.attack + sk.connive || 1;
+  console.log('  the lanes   ', `${(100 * f.usedAll).toFixed(0)}% of winners used all three`,
+    `· ${(100 * f.skippers).toFixed(0)}% skipped one`,
+    `(the skipped one is build ${(100 * sk.build / skTotal).toFixed(0)}% · attack ${(100 * sk.attack / skTotal).toFixed(0)}% · connive ${(100 * sk.connive / skTotal).toFixed(0)}%)`);
+  for (const [road, r] of Object.entries(f.byRoad)) {
+    if (!r.share) continue;
+    console.log(`  ${road === 'usurp' ? 'usurpers  ' : 'inheritors'}  `,
+      `build ${(100 * r.mix.build).toFixed(0)}%  attack ${(100 * r.mix.attack).toFixed(0)}%  connive ${(100 * r.mix.connive).toFixed(0)}%`,
+      `  — ${(100 * r.usedAll).toFixed(0)}% of them used all three`);
+  }
   console.log('  enjoyment   ', `${f.score.toFixed(0)}/100`,
-    `(mix ${f.mixScore.toFixed(0)}/50  breadth ${f.breadthScore.toFixed(0)}/25  options ${f.optionScore.toFixed(0)}/25)`,
+    `(mix ${f.mixScore.toFixed(0)}/50  main line ${f.mainLine.toFixed(0)}/18  other roads ${f.openRoads.toFixed(0)}/7  options ${f.optionScore.toFixed(0)}/25)`,
     f.notes.length ? `— ${f.notes.join('; ')}` : '');
   console.log('  seats       ', s.seatRates.map((r) => `${r.toFixed(0)}%`).join(' '),
     '  mean winner fealty', s.meanWinnerFealty.toFixed(1),
