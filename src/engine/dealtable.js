@@ -11,6 +11,7 @@
 import { TITLE_BY_ID } from './constants.js';
 import { playerById } from './state.js';
 import { emptyGoods } from './deals.js';
+import { endgameWeight, streamValue } from './horizon.js';
 
 export function blankTable() {
   return { offers: {}, takes: {}, accepted: [] };
@@ -135,11 +136,20 @@ export function describe(goods) {
   return bits.length ? bits.join(', ') : 'nothing';
 }
 
-/** What this deal is worth to one house, roughly, in gold. */
+/**
+ * What this deal is worth to one house, roughly, in gold.
+ *
+ * Land is priced at a three-move horizon plus its claim on the end-of-deck
+ * tie-break, not at "every harvest between now and the end of the game" — the
+ * old formula made a field on round two worth eleven gold, which meant no
+ * bargain involving land could ever look sane to the house giving it up.
+ */
 export function balanceFor(state, table, pid) {
+  const remaining = state.deck.length;
+  const landWorth = streamValue(state.tuning?.landIncome ?? 1, remaining) + 2.5 * endgameWeight(remaining);
   const worth = (g) => {
     const n = norm(g);
-    return n.gold + n.lands * (2 + state.deck.length * 0.8) + n.titles.length * 6 + n.turncoat * 3;
+    return n.gold + n.lands * landWorth + n.titles.length * 6 + n.turncoat * 3;
   };
   return worth(table.takes?.[pid] || {}) - worth(table.offers?.[pid] || {});
 }

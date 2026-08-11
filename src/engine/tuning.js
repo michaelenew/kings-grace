@@ -46,6 +46,16 @@ export const RULES = {
   marshalBonus: 1,
   wardenBonus: 1,
   /**
+   * Plunder: gold taken from the loser on top of the land or the title.
+   *
+   * War is the only order whose whole payoff lands inside a three-move horizon,
+   * and it was paying one field — worth about two and a half gold — for a
+   * commitment of three or more. Plunder is what makes a swollen purse a reason
+   * to be attacked rather than a reason to be safe, which is the jealousy of
+   * the court doing the job the design always wanted it to do.
+   */
+  spoilsGold: 4,
+  /**
    * The most gold one order may carry. This is what makes a usurpation a
    * conspiracy: no purse alone can outreach the crown, so the throne has to be
    * bought with somebody else's sword.

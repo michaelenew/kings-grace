@@ -755,10 +755,18 @@ export class Game {
 
   /** §5 spoils — a land, or a title if the loser's walls were down. */
   async takeSpoils(winner, loser, wallsDown) {
+    // Plunder first, and it is not a choice: you break the gate, the strongboxes
+    // go. This is what makes a fat purse a reason to be attacked.
+    const plunder = Math.min(this.state.tuning.spoilsGold || 0, loser.gold);
+    if (plunder > 0) {
+      loser.gold -= plunder;
+      winner.gold += plunder;
+      this.emit('spoils', `${winner.name} plunders ${plunder} gold from ${loser.name}.`);
+    }
     const canTakeTitle = wallsDown && loser.titles.length > 0;
     const canTakeLand = loser.lands > 0;
     if (!canTakeLand && !canTakeTitle) {
-      this.emit('spoils', `${loser.name} has nothing left worth taking.`);
+      if (!plunder) this.emit('spoils', `${loser.name} has nothing left worth taking.`);
       return;
     }
     let choice = { kind: canTakeLand ? 'land' : 'title', title: loser.titles[0] };

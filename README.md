@@ -14,7 +14,7 @@ served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 79 rules, bot and balance tests
+npm test                   # 93 rules, bot, trust and balance tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 
@@ -76,12 +76,12 @@ still hit those targets, so the claims below are checked rather than remembered.
 
 Where it lands, across 600 games per table size:
 
-| Players | Ends in usurpation | Mean ending round (of 12) | Battles/game |
-|---|---|---|---|
-| 3 | 40% | 11.6 | 4.3 |
-| 4 | 22% | 11.8 | 5.8 |
-| 5 | 20% | 11.8 | 7.0 |
-| 6 | 17% | 11.8 | 8.2 |
+| Players | Ends in usurpation | Mean ending round (of 12) | Battles/game | Doctrine spread |
+|---|---|---|---|---|
+| 3 | 65% | 11.3 | 6.8 | 13pt |
+| 4 | 55% | 11.4 | 8.9 | 12pt |
+| 5 | 47% | 11.4 | 10.6 | 13pt |
+| 6 | 47% | 11.3 | 12.1 | 15pt |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
 size. Both roads to the throne stay open at every table size, which is the
@@ -112,11 +112,10 @@ nobody is allowed to keep the Marshal — the table prices a title by how long y
 get to hold it, and no title's text was touched to make that happen. The whole
 spread narrowed from about 12 points to about 5.
 
-**Theft in the field is still rare, though: 0.06 a game.** The levy opens the
-gate and the bots do not walk through it, because striking a favorite costs 2
-fealty and a bot will not pay that to rob a house it was not already fighting.
-Every coronet that moves, moves by claim. Whether people play it that way is
-exactly what the bots cannot tell you.
+**Theft in the field caught up once war paid.** It sat at 0.06 a game while a
+raid was worth one field; with the three-move horizon and 4 gold of plunder it
+is **1.19 a game**, slightly ahead of the 0.86 taken by grant. Both roads to a
+coronet are now live.
 
 **Being a favorite ought to be dangerous, and against these bots it is not.**
 Favor pays every favorite, which makes climbing lucrative, and the bots let it
@@ -126,13 +125,21 @@ jealousy of the court is supposed to make the favorite band as risky as the
 outlaw band — the same mechanic pointing the other way. Read the climbing lane's
 win rate with that in mind; it is measuring a table that does not retaliate.
 
-**The back half of the game has nothing to buy.** The unclaimed land is gone by
-round 8, appeals stop at +3, and what is left is Support — which costs nothing
-but coin, never costs standing, and cannot lose. It takes 56% of every turn from
-round 8 onward, against 7% before. Gold piles up because there is nowhere for it
-to go, and the Tax ladder at 6/7/8 is holding the line rather than solving it.
-`tools/order-diary.js` prints the shape; RULES.md Appendix B has the sweeps that
-rule out the other explanations.
+**The horizon was the whole problem.** Everything the bots valued used to be
+priced over the entire remaining deck: a field bought on round two was worth
+eleven harvests. That made building and climbing overwhelmingly correct from the
+first turn and made fighting — a cost now for a gain now — look like a waste.
+`src/engine/horizon.js` prices things over about three moves instead, and it
+moved more than every constant in the game put together: battles 5.5 -> 7.3,
+outlaw band occupancy 8% -> 18%, doctrine spread 33pt -> 25pt. Adding plunder on
+top took battles to 8.9 and the spread to 12pt.
+
+**The houses do not pull apart.** The leader finishes 1.5 land and 0.5 fealty
+ahead of the median at four players, and the fealty gap *peaks* around round 5
+and then shrinks — everybody arrives at the top of the track together and the
+throne comes down to a tie-break nobody can move. That is why war had to be made
+to pay: a raid is the only thing that can break a tie, and it was paying one
+field for a commitment of three or more gold.
 
 **Crown strength is the single most important number.** Too weak and the game is
 nothing but coups; too strong and the coup stops being a check on the leader,
@@ -212,6 +219,7 @@ styles.css
 server.js           zero-dependency static server
 src/engine/         the rules; knows nothing about the DOM
   tuning.js         every number the game is made of
+  horizon.js        how far ahead a house is supposed to be thinking
   deals.js          one-shot bargains
   dealtable.js      the open pot: offers, takes, acceptances
   trust.js          the ledger: words given, deeds done, opinions held

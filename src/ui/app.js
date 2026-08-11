@@ -63,6 +63,7 @@ const KNOBS = [
   { key: 'levyRefusal', label: 'Fealty lost refusing a levy' },
   { key: 'titleClaimCost', label: 'Gold to claim a held title' },
   { key: 'walls', label: 'Walls' },
+  { key: 'spoilsGold', label: 'Gold plundered on a win' },
 ];
 
 // --------------------------------------------------------------- controllers
@@ -860,6 +861,7 @@ function attackPreview(s, me, d) {
   return el('div', { class: 'preview' }, [
     el('p', {}, `Your strength: ${strength} (${d.gold || 1} gold${marshal ? ' + 1 Marshal' : ''}${punch ? ` + ${punch} punching down` : ''}).`),
     el('p', {}, `Their walls: ${t.walls}${warden ? ` + ${warden} Warden` : ''} — unless they attack too, in which case 0. Support on either side is hidden.`),
+    el('p', {}, `If you break through you plunder ${Math.min(t.spoilsGold, target.gold)} gold from them as well as taking a land.`),
     el('p', {}, `Striking a ${BAND_LABEL[bandOf(target.fealty)].toLowerCase()} costs you ${consequence}.`),
   ]);
 }
@@ -1035,7 +1037,7 @@ function showRules() {
         'Attack = gold + support aimed at you + punching-down bonus + Marshal.',
         `Defense = walls (${t.walls}, or 0 if you also attacked) + support aimed at you + Warden.`,
         'Attacker wins on strictly greater. Herald wins its holder every tie.',
-        'Spoils: one land, or one title if the loser’s walls were down — because they attacked, or because they answered the levy.',
+        `Spoils: ${t.spoilsGold} gold plundered whatever happens, plus one land — or one title instead, if the loser’s walls were down because they attacked or answered the levy.`,
       ]),
       section('Attacking costs standing', [
         'A favorite: −2 fealty. A neutral: nothing. An outlaw: +1. The Crown: straight to −3.',

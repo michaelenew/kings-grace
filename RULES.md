@@ -118,7 +118,19 @@ to be bought with somebody else's sword.
 
 Attacker wins on **strictly greater**. Ties favor the defender (Herald breaks ties in its holder's favor, §7).
 
-**Spoils:** the winner takes **one land** of their choice from the loser. If the loser's army was in the field (walls were 0 — they attacked, or they answered the levy), the winner may instead take **one of the loser's titles**.
+**Spoils:** the winner **plunders 4 gold** (or whatever the loser has, if less) —
+this is not a choice, you broke the gate and the strongboxes go — and then takes
+**one land** of their choice. If the loser's army was in the field (walls were 0
+— they attacked, or they answered the levy), the winner may take **one of the
+loser's titles** instead of the land.
+
+Plunder is what makes a swollen purse a reason to be attacked rather than a
+reason to be safe. Without it a raid paid one field, worth about two and a half
+gold at a three-move horizon, for a commitment of three or more — so nobody
+raided, gold piled up, and the back half of the game was everyone parking coin
+on Support. It is also the game's real gold sink: war destroys the gold
+committed to it and moves the rest, and it does both in proportion to how much
+there is to fight over.
 
 **Multiple attacks on one target** resolve independently against the same defense, in descending attack-strength order (Herald, then random, breaks ordering ties). Each successful attack takes its own spoils.
 
@@ -342,6 +354,50 @@ seeing rather than being told:
 
 Taxing harder buys battles up to a point and then starts taking them away, for
 the obvious reason: past a certain weight, nobody can afford to fight either.
+
+### The horizon, and why it was the whole problem
+
+Almost every judgement in this game is secretly a judgement about how far ahead
+you are supposed to be thinking. A field is a stream of gold — over how long?
+Standing is a claim on a throne — how many rounds away? Betrayal pays now and
+costs later — how much later is "later"?
+
+The answer is **about three moves**: this one and two more, with the two
+together mattering slightly less than the one in hand. `src/engine/horizon.js`
+is that decision with a number attached, and everything that used to reason over
+"the whole remaining deck" now reads from it.
+
+That single change did more than every constant in this file put together.
+Before it, a field bought on round two was priced at eleven harvests, which made
+building and climbing overwhelmingly correct from the first turn and made
+fighting — a cost now for a gain now — look like a waste:
+
+| | Before | After the horizon | And with plunder |
+|---|---|---|---|
+| Battles per game | 5.5 | 7.3 | **8.9** |
+| A winner's turns spent attacking | 15% | 22% | **30%** |
+| Coronets taken by the sword | 0.27 | 0.93 | **1.19** |
+| Usurpation / inheritance | 35 / 65 | 46 / 54 | **55 / 46** |
+| Gold left on the table at the end | 13.9 | 13.0 | **11.2** |
+| Doctrine spread (best lane minus worst) | 33pt | 25pt | **12pt** |
+| Enjoyment (tools/enjoyment.js) | 62 | 62 | **69** |
+
+The bands came back too: the outlaw band went from 8% of all player-rounds to
+18%, because the shadow's payoff is immediate and the shadow was being priced
+against an eleven-round land habit.
+
+### Do the houses pull apart?
+
+No, and that is the thing to understand about the back half. `tools/order-diary.js`
+prints the leader's margin over the median, round by round. At four players the
+leader finishes **1.5 land and 0.5 fealty** ahead, and the top house holds 37%
+of all land against a 25% baseline. The fealty gap *peaks* around round 5 at 1.0
+and then shrinks — everybody catches up, everybody arrives at the top of the
+track together, and the throne comes down to a tie-break nobody can move.
+
+That is why the late game was a stalemate, and it is why war had to be made to
+pay: a raid is the only thing on the board that can break a tie, and it was
+paying less than it cost.
 
 ### Why there are not more battles
 

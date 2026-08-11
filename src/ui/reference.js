@@ -44,7 +44,8 @@ export function referenceCard(tuning, players) {
     ]),
 
     block('Combat', [
-      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you attacked or answered the levy) + support + Warden. Attacker needs strictly more. Spoils: a land, or a title if their walls were down.`),
+      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you attacked or answered the levy) + support + Warden. Attacker needs strictly more.`),
+      el('p', { class: 'ref-line dim' }, `Spoils: ${tuning.spoilsGold} gold plundered whatever happens, plus a land — or a title instead of the land, if their walls were down. A full purse is a reason to be attacked.`),
     ]),
 
     block('Winning', [

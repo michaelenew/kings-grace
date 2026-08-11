@@ -11,6 +11,7 @@
 
 import { BAND, CROWN, FEALTY_MAX, ORDER, TITLES, bandOf, clampFealty } from './constants.js';
 import { emptyGoods } from './deals.js';
+import { LATER, endgameWeight, streamValue } from './horizon.js';
 
 // `credulity` is the trust tolerance: how much of somebody else's word a house
 // is willing to act on, before any ledger. It runs from a loyalist who takes
@@ -35,7 +36,8 @@ const DOCTRINE_PULL = 7;
  */
 function TITLE_WORTH(id, view) {
   const worth = {
-    marshal: 12, herald: 9, warden: 8, chancellor: 5, spymaster: 5, steward: 4 + view.deckCount * 0.3,
+    marshal: 12, herald: 9, warden: 8, chancellor: 5, spymaster: 5,
+    steward: 4 + streamValue(view.tuning?.stewardIncome ?? 1, view.deckCount),
   };
   return worth[id] ?? 3;
 }
@@ -61,24 +63,38 @@ const has = (p, t) => p.titles.includes(t);
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const pull = (doctrine, key) => (doctrine[key] === undefined ? 0 : DOCTRINE_PULL * (doctrine[key] - 1));
 
-/** How much a position is worth to the bot holding it. */
+/**
+ * What a position is worth, judged at a three-move horizon.
+ *
+ * Everything here used to be priced over the whole remaining deck — a field
+ * bought on round two was worth eleven harvests — which made building and
+ * climbing overwhelmingly correct from the first turn and made fighting, a cost
+ * now for a gain now, look like a waste. See src/engine/horizon.js.
+ *
+ * The split that matters is between things that pay *per round*, which are
+ * worth what the next three rounds are worth, and things that only pay when the
+ * deck runs out, which are worth almost nothing until it nearly has.
+ */
 function positionScore(p, view, traits, doctrine = {}) {
   const remaining = view.deckCount;
-  const lateness = 1 - remaining / Math.max(1, view.deckStart ?? 12);
   const band = bandOf(p.fealty);
   const income = view.tuning?.landIncome ?? 1;
+  const endgame = endgameWeight(remaining);
   let s = 0;
   s += p.gold * 0.55 * traits.greed;
-  s += p.lands * (1.4 + 0.75 * remaining * income);
-  s += p.fealty * (3 + 20 * lateness); // the inheritance clock
+  // A field is three harvests and a claim on the tie-break, not eleven harvests.
+  s += p.lands * (streamValue(income, remaining) + 2.5 * endgame);
+  // Standing is almost purely terminal: it buys band effects now and the throne
+  // at the end, and the throne is the part worth having.
+  s += p.fealty * (1.2 + 22 * endgame);
   // Not a flat rate per coronet: a Marshal and a Spymaster are not the same
   // prize, and now that titles change hands the difference decides whether one
   // is worth going after.
   s += p.titles.reduce((a, id) => a + TITLE_WORTH(id, view) * 0.45, 0);
-  if (band === BAND.NEUTRAL) s += 0.5 * remaining * (view.tuning?.neutralIncome ?? 1);
+  if (band === BAND.NEUTRAL) s += 0.5 * streamValue(view.tuning?.neutralIncome ?? 1, remaining);
   if (band === BAND.FAVORITE) s += 1.5;
   if (band === BAND.OUTLAW) s += 2 * traits.treachery;
-  if (has(p, 'steward')) s += 0.6 * remaining;
+  if (has(p, 'steward')) s += 0.6 * streamValue(view.tuning?.stewardIncome ?? 1, remaining);
   // A committed lane is worth something while there is game left to play, but
   // the crown goes to whoever stands highest when the deck runs out. Every
   // doctrine has to cash out eventually, so the lane bonus fades.
@@ -243,8 +259,10 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           const coronet = target.noArmy
             ? target.titles.slice().sort((a, b) => TITLE_WORTH(b, view) - TITLE_WORTH(a, view))[0]
             : null;
+          // Plunder is not optional and lands whatever else you take.
+          const plunder = Math.min(t.spoilsGold || 0, target.gold);
           const win = withChanges(me, {
-            gold: me.gold - spend,
+            gold: me.gold - spend + plunder,
             lands: me.lands + (target.lands > 0 && !coronet ? 1 : 0),
             titles: coronet ? [...me.titles, coronet] : me.titles,
             fealty: clampFealty(me.fealty + fealtyDelta),
@@ -264,9 +282,13 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           // bargained with is the expensive kind of betrayal — you lose them and
           // you lose a little of everyone. A house already sure you are a snake
           // has nothing left to take away, so the treacherous ride cheaper.
-          if (myWord.standDown.has(target.id)) score -= 3.5 * (1 - 0.5 * traits.treachery);
-          if (partners.has(target.id)) score -= 4.5 * (1 - 0.45 * traits.treachery);
-          score -= Math.max(0, standingWith(view, target.id)) * 0.9 * (1 - 0.4 * traits.treachery);
+          // The gain from a betrayal lands this move; what it costs you lands
+          // over the next two, so it is worth what those two are worth. That
+          // ratio *is* the decision — LATER is a shade under one, which is why
+          // treachery is usually worth it and never free.
+          if (myWord.standDown.has(target.id)) score -= 3.5 * LATER * (1 - 0.5 * traits.treachery);
+          if (partners.has(target.id)) score -= 4.5 * LATER * (1 - 0.45 * traits.treachery);
+          score -= Math.max(0, standingWith(view, target.id)) * 0.9 * LATER * (1 - 0.4 * traits.treachery);
           if (pact && pact.kind === 'attack' && pact.subject === target.id) score += pactPull;
           if (pact && pact.kind === 'standDown' && pact.with === target.id) score -= pactPull;
           candidates.push({ order: ORDER.ATTACK, target: target.id, gold: spend, score, why: `raid ${target.name}` });
@@ -355,7 +377,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           order: ORDER.SUPPORT,
           target: ally.id,
           gold: spend,
-          score: (t2 + mutual * 2) * 1.1 - spend * 0.55 + pull(doctrine, 'support'),
+          score: (t2 + mutual * 2) * 1.1 * LATER - spend * 0.55 + pull(doctrine, 'support'),
           why: `stand with ${ally.name}`,
         });
       }
@@ -370,7 +392,9 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
           gold: spend,
           // Breaking your word costs 2 trust with them and 1 with everybody
           // else. The treacherous discount that; nobody ignores it.
-          score: 5 * (1 - 0.5 * traits.treachery) - spend * 0.5 + pull(doctrine, 'support'),
+          // Keeping your word buys credit you spend later, so it is discounted
+          // exactly as the betrayal that would break it is.
+          score: 5 * LATER * (1 - 0.5 * traits.treachery) - spend * 0.5 + pull(doctrine, 'support'),
           why: 'keep your word',
         });
       }
@@ -500,7 +524,8 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
   function chooseSpoils(request, view) {
     const loser = view.players.find((p) => p.id === request.loser);
     const bestTitle = request.titles.slice().sort((a, b) => TITLE_WORTH(b, view) - TITLE_WORTH(a, view))[0];
-    const landWorth = 1.4 + 0.75 * view.deckCount * (view.tuning?.landIncome ?? 1);
+    const landWorth = streamValue(view.tuning?.landIncome ?? 1, view.deckCount)
+      + 2.5 * endgameWeight(view.deckCount);
     if (request.landsAvailable === false || TITLE_WORTH(bestTitle, view) > landWorth) {
       return { kind: 'title', title: bestTitle };
     }
@@ -651,7 +676,8 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     const worth = (goods) => {
       if (!goods) return 0;
       let v = goods.gold || 0;
-      v += (goods.lands || 0) * (2 + remaining * 0.8);
+      v += (goods.lands || 0)
+        * (streamValue(view.tuning?.landIncome ?? 1, remaining) + 2.5 * endgameWeight(remaining));
       v += ((goods.titles || []).length) * 6;
       v += (goods.turncoat || 0) * 3 * Math.max(0.6, traits.treachery);
       return v;

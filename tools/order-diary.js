@@ -32,7 +32,18 @@ const row = (i) => (perRound[i] ??= {
   orders: blank(), pool: 0, poolZero: 0, games: 0, seats: 0,
   attackTargets: { favorite: 0, neutral: 0, outlaw: 0, crown: 0 },
   developWanted: 0, developBlocked: 0,
+  // How far apart the houses are. A table that has already separated by the
+  // midpoint is a table where the back half is a formality; one that stays
+  // level is a table where nobody has a reason to swing at anybody.
+  landGap: 0, goldGap: 0, fealtyGap: 0, leadShare: 0,
 });
+
+/** Spread as the leader's margin over the median, in the leader's units. */
+function gap(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  return Math.max(...sorted) - median;
+}
 
 for (let seed = 1; seed <= N; seed++) {
   const rng = makeRng(seed ^ 0x51ed270b);
@@ -51,6 +62,13 @@ for (let seed = 1; seed <= N; seed++) {
     r.pool += state.neutralPool;
     if (state.neutralPool === 0) r.poolZero += 1;
     r.games += 1;
+    const lands = state.players.map((p) => p.lands);
+    const golds = state.players.map((p) => p.gold);
+    r.landGap += gap(lands);
+    r.goldGap += gap(golds);
+    r.fealtyGap += gap(state.players.map((p) => p.fealty));
+    const totalLand = lands.reduce((a, b) => a + b, 0) || 1;
+    r.leadShare += Math.max(...lands) / totalLand;
     const before = state.neutralPool;
     await originalCommit();
     for (const p of state.players) {
@@ -75,7 +93,7 @@ for (let seed = 1; seed <= N; seed++) {
 
 const pct = (a, b) => (b ? (100 * a) / b : 0);
 console.log(`\n${N} games, ${PLAYERS} players. What each round looks like from the inside.\n`);
-console.log('  rd  land left   attack  support   appeal  develop    hold    |  attacks land on');
+console.log('  rd  land left   attack  support   appeal  develop    hold    |  leader ahead by');
 for (let i = 0; i < perRound.length; i++) {
   const r = perRound[i];
   if (!r || r.seats < N * 0.2) continue; // stop once most games have ended
@@ -83,9 +101,9 @@ for (let i = 0; i < perRound.length; i++) {
   const at = r.attackTargets;
   const atTotal = at.favorite + at.neutral + at.outlaw + at.crown;
   const share = (n) => `${pct(n, r.seats).toFixed(0).padStart(5)}%`;
-  const tgt = atTotal
-    ? `fav ${pct(at.favorite, atTotal).toFixed(0)}%  neu ${pct(at.neutral, atTotal).toFixed(0)}%  out ${pct(at.outlaw, atTotal).toFixed(0)}%  crown ${pct(at.crown, atTotal).toFixed(0)}%`
-    : '—';
+  const tgt = `${(r.landGap / r.games).toFixed(1)} land  ${(r.goldGap / r.games).toFixed(0).padStart(2)} gold`
+    + `  ${(r.fealtyGap / r.games).toFixed(1)} fealty   (top house holds ${(100 * r.leadShare / r.games).toFixed(0)}% of all land)`;
+  void atTotal; void at;
   console.log(`  ${String(i + 1).padStart(2)}  ${(r.pool / r.games).toFixed(1).padStart(9)}`
     + `   ${share(o[ORDER.ATTACK])}   ${share(o[ORDER.SUPPORT])}   ${share(o[ORDER.PETITION])}`
     + `   ${share(o[ORDER.DEVELOP])}  ${share(o[ORDER.HOLD])}    |  ${tgt}`);
