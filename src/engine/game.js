@@ -145,15 +145,38 @@ export class Game {
     this.notify();
   }
 
+  /**
+   * The Crown takes its due in coin, and in land from anyone who cannot find
+   * the coin. Seized fields go back to the *unclaimed pool*, not out of play:
+   * the Crown has no use for a field, it wants a tenant who can pay. That is
+   * the only thing in the game that puts land back on the board, and it is what
+   * keeps Develop alive past the midpoint.
+   */
   resolveTax() {
-    for (const p of seatOrder(this.state)) {
-      let due = this.state.tuning.taxByBand[bandOf(p.fealty)];
-      if (hasTitle(p, 'chancellor')) due = Math.max(0, due - this.state.tuning.chancellorRelief);
+    const s = this.state;
+    const perLand = s.tuning.taxLandValue || 0;
+    for (const p of seatOrder(s)) {
+      let due = s.tuning.taxByBand[bandOf(p.fealty)];
+      if (hasTitle(p, 'chancellor')) due = Math.max(0, due - s.tuning.chancellorRelief);
       const paid = Math.min(due, p.gold);
       p.gold -= paid;
-      this.state.crownGold += paid;
-      const short = paid < due ? ` (owed ${due}, could only pay ${paid})` : '';
-      this.emit('tax', `${p.name} pays ${paid} gold in tax${short}.`);
+      s.crownGold += paid;
+      let debt = due - paid;
+      let seized = 0;
+      while (perLand > 0 && debt > 0 && p.lands > 0) {
+        p.lands -= 1;
+        s.neutralPool += 1;
+        debt -= perLand;
+        seized += 1;
+      }
+      const owed = paid < due ? ` (owed ${due})` : '';
+      if (seized) {
+        this.emit('tax', `${p.name} pays ${paid} gold in tax${owed} and forfeits `
+          + `${seized} land${seized === 1 ? '' : 's'} to the Crown, which puts ${seized === 1 ? 'it' : 'them'} back out to tenancy.`);
+      } else {
+        const short = paid < due ? `${owed}, and has nothing left to seize` : '';
+        this.emit('tax', `${p.name} pays ${paid} gold in tax${short}.`);
+      }
     }
   }
 

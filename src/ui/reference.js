@@ -39,6 +39,10 @@ export function referenceCard(tuning, players) {
       line('Develop', `${tuning.developCost} gold for one land. Land pays ${tuning.landIncome} gold a round.`),
     ]),
 
+    block('The tax', [
+      el('p', { class: 'ref-line dim' }, `Favorites pay ${tuning.taxByBand.favorite}, neutrals ${tuning.taxByBand.neutral}, outlaws ${tuning.taxByBand.outlaw}. Pay what coin you have — anything still owed is taken in land, one field per ${tuning.taxLandValue} gold, and the Crown puts those fields straight back out to tenancy. It has no use for a field; it wants a tenant who can pay.`),
+    ]),
+
     block('The levy', [
       el('p', { class: 'ref-line dim' }, `Send your host and your army marches for the Crown: no walls and no attack this round, so a land — or a title — can be taken off you. Refuse and drop ${tuning.levyRefusal} fealty. At +1 you can refuse and still be neutral; from 0 the same refusal makes you an outlaw.`),
     ]),

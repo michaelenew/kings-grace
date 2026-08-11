@@ -18,8 +18,15 @@ export const RULES = {
    */
   startGold: 8,
   startFealty: 0,
-  /** Unclaimed land is dealt per player, so Develop stays live at any count. */
-  neutralPerPlayer: 2,
+  /**
+   * Unclaimed land dealt per player, so Develop stays live at any count.
+   *
+   * Three, not two. At two the pool was dry by round seven and the back half of
+   * every game had no building in it at all — which is half of why a winner's
+   * turns came out short of the 40% the mix wants. It is also what makes the
+   * land-tax recycling above worth having: fields have somewhere to go back to.
+   */
+  neutralPerPlayer: 3,
   /** Most unspent turncoat tokens a player may hold at once. */
   turncoatMax: 2,
   deck: { tax: 4, levy: 4, favor: 4 },
@@ -82,6 +89,17 @@ export const RULES = {
    */
   taxByBand: { favorite: 6, neutral: 7, outlaw: 8 },
   chancellorRelief: 1,
+  /**
+   * What a field is worth to the tax collector. A house that cannot pay its tax
+   * in coin pays it in land, and that land goes **back to the unclaimed pool**
+   * rather than out of play — the Crown has no use for a field, it wants a
+   * tenant who can pay.
+   *
+   * This is the only thing in the game that puts land back on the board, which
+   * is what keeps Develop alive past the midpoint. Zero turns it off and
+   * restores "pay what you have and keep your fields".
+   */
+  taxLandValue: 5,
   /**
    * The levy asks for your host, not your purse. Answer it and your army
    * marches under the royal banner: no walls and no attack this round, so

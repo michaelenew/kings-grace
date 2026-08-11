@@ -19,7 +19,7 @@ is in Appendix B.
 | Starting lands per player | 3 |
 | Starting gold per player | 8 |
 | Starting fealty per player | 0 |
-| Neutral land pool | 2 per player |
+| Neutral land pool | 3 per player |
 | Crown deck | 12 cards (composition in §6) |
 | Fealty track | −3 to +3 per player |
 | Titles | 6 unique (list in §7) |
@@ -88,12 +88,12 @@ order this round is spent and cannot be traded.
 
 Each player picks exactly one per round:
 
-- **Attack [target]** — commit **1 to 7 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
-- **Support [target]** — commit **1 to 7 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
+- **Attack [target]** — commit **1 to 9 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
+- **Support [target]** — commit **1 to 9 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies.
 - **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
-**No order may carry more than 7 gold.** This is the rule that makes a
+**No order may carry more than 9 gold.** This is the rule that makes a
 usurpation a conspiracy: no purse alone outreaches the crown, so the throne has
 to be bought with somebody else's sword.
 
@@ -151,7 +151,7 @@ Resolved immediately on flip:
 
 | Card | Count | Effect |
 |---|---|---|
-| **Tax** | 4 | Favorites pay 6, neutrals pay 7, outlaws pay 8 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
+| **Tax** | 4 | Favorites pay 6, neutrals pay 7, outlaws pay 8 (Chancellor pays 1 less, min 0). Pay what coin you have; **anything still owed is taken in land**, one field per 5 gold of debt, and those fields go **back to the unclaimed pool**. |
 | **Levy** | 4 | The Crown calls up your host. **Serve** — your army marches, so you have **no walls and no Attack order this round** — or **refuse** and drop **2 fealty**. |
 | **Favor** | 4 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
 
@@ -386,9 +386,43 @@ The bands came back too: the outlaw band went from 8% of all player-rounds to
 18%, because the shadow's payoff is immediate and the shadow was being priced
 against an eleven-round land habit.
 
+### Two changes to the land economy, tested apart and together
+
+The back half had no building in it: the pool was dry by round seven and after
+that a winner's turns had nowhere to go but Support. Two candidate fixes, each
+measured alone against the same 500 seeds and then together.
+
+| | Enjoyment | Mix (of 50) | Options (of 25) | Priced out | Gold at the end |
+|---|---|---|---|---|---|
+| Neither | 69 | 33 | 22 | 17% | 11.2 |
+| Failed taxes paid in land | 68 | 34 | **19** | **26%** | 8.7 |
+| 3 fields per player, not 2 | 71 | 33 | **25** | 16% | 13.6 |
+| **Both** | **72** | **36** | 22 | 23% | 10.2 |
+
+They fix different halves and neither is sufficient alone. Paying tax in land
+improves the *mix* — it is a real sink, and recycled fields give Develop
+somewhere to point — but on its own it is a poverty spiral: you cannot pay, so
+you lose a field, so your income falls, so you cannot pay next time either.
+A bigger pool fixes affordability and does nothing for the mix. Together the mix
+lands at its best measured value and the gold at the end lands on 10.
+
+**A note on the instrument.** This comparison first came out backwards, because
+`imbalance()` was charging for being priced out *twice* — once in its own
+`starved-choices` term and again through the enjoyment score's options
+component — and the older, cruder term was large enough to dominate. It ranked a
+configuration that scored better on enjoyment as worse overall. The old term is
+now a backstop at 25% rather than a gradient from 8%.
+
+**And the pool now never empties**, which relocates the problem rather than
+solving it: 6.6 fields are still unclaimed at round twelve, and Develop still
+falls to 1% by round nine. Building is no longer gated by *land*. It is gated by
+*gold*, which is the tax doing its job to a fault.
+
 ### Do the houses pull apart?
 
-No, and that is the thing to understand about the back half. `tools/order-diary.js`
+Rather more than they did — the leader's share of all land went from 37% to
+**45%** once there was land left to take, which is the bigger pool doing
+something the raw mix does not show. But on standing, no. `tools/order-diary.js`
 prints the leader's margin over the median, round by round. At four players the
 leader finishes **1.5 land and 0.5 fealty** ahead, and the top house holds 37%
 of all land against a 25% baseline. The fealty gap *peaks* around round 5 at 1.0

@@ -109,8 +109,11 @@ for (let i = 0; i < perRound.length; i++) {
     + `   ${share(o[ORDER.DEVELOP])}  ${share(o[ORDER.HOLD])}    |  ${tgt}`);
 }
 
-const emptyFrom = perRound.findIndex((r) => r && r.poolZero > r.games * 0.5);
-console.log(`\nThe unclaimed land is gone in most games from round ${emptyFrom + 1} of ${perRound.length}.`);
+const emptyIdx = perRound.findIndex((r) => r && r.poolZero > r.games * 0.5);
+const emptyFrom = emptyIdx === -1 ? Math.ceil(perRound.length / 2) : emptyIdx;
+console.log(emptyIdx === -1
+  ? `\nThe unclaimed land never runs out. Splitting at round ${emptyFrom + 1} instead.`
+  : `\nThe unclaimed land is gone in most games from round ${emptyFrom + 1} of ${perRound.length}.`);
 const late = perRound.slice(emptyFrom).filter(Boolean);
 const lateSeats = late.reduce((a, r) => a + r.seats, 0);
 const lateAttack = late.reduce((a, r) => a + r.orders[ORDER.ATTACK], 0);

@@ -85,8 +85,13 @@ function imbalance(s, players = 4) {
   // Swords should come out.
   add(Math.max(0, 3.5 - s.battlesPerGame) * 8, 'no-fighting');
   // Being priced out of every order but attack-or-support is not a decision,
-  // it is a dead turn. This is the single loudest feel problem there is.
-  add(Math.max(0, s.starvedChoices - 8) * 2.2, 'starved-choices');
+  // it is a dead turn — but the enjoyment score's options component already
+  // prices exactly this, on a scale rather than a threshold and weighed against
+  // everything else a turn could be. Charging it here as well double-counted
+  // it, and the older, cruder term was large enough to dominate: it made a
+  // configuration that scored *better* on enjoyment score worse overall. What
+  // is left is a backstop for the genuinely unplayable, not a gradient.
+  add(Math.max(0, s.starvedChoices - 25) * 2.2, 'starved-choices');
   // No single order should dominate the round, and none should be dead.
   for (const [k, v] of Object.entries(s.orderMix)) {
     if (k === 'attackCrown' || k === 'ransom' || k === 'hold') continue;

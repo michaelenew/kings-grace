@@ -64,6 +64,8 @@ const KNOBS = [
   { key: 'titleClaimCost', label: 'Gold to claim a held title' },
   { key: 'walls', label: 'Walls' },
   { key: 'spoilsGold', label: 'Gold plundered on a win' },
+  { key: 'taxLandValue', label: 'Gold a forfeited field settles' },
+  { key: 'neutralPerPlayer', label: 'Unclaimed land per player' },
 ];
 
 // --------------------------------------------------------------- controllers
@@ -1055,7 +1057,7 @@ function showRules() {
         'Usurp the throne, or hold the highest fealty when the crown deck runs out (ties: most lands, then most gold).',
       ]),
       section('The crown deck in play', [
-        `${t.deck.tax} Tax — favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}.`,
+        `${t.deck.tax} Tax — favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}. What you cannot pay in coin is taken in land, one field per ${t.taxLandValue} gold owed, and those fields go back out to tenancy.`,
         `${t.deck.levy} Levy — send your host (no walls, no attack this round) or refuse and drop ${t.levyRefusal} fealty.`,
         `${t.deck.favor} Favor — every favorite is paid ${t.favorGold} gold, and those at +${t.favorLandAt} take a land as well.`,
       ]),

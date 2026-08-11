@@ -78,10 +78,10 @@ Where it lands, across 600 games per table size:
 
 | Players | Ends in usurpation | Mean ending round (of 12) | Battles/game | Doctrine spread |
 |---|---|---|---|---|
-| 3 | 65% | 11.3 | 6.8 | 13pt |
-| 4 | 55% | 11.4 | 8.9 | 12pt |
-| 5 | 47% | 11.4 | 10.6 | 13pt |
-| 6 | 47% | 11.3 | 12.1 | 15pt |
+| 3 | 59% | 11.3 | 6.8 | 33pt |
+| 4 | 51% | 11.4 | 8.6 | 14pt |
+| 5 | 47% | 11.4 | 10.1 | 19pt |
+| 6 | 42% | 11.4 | 11.7 | 17pt |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
 size. Both roads to the throne stay open at every table size, which is the
@@ -134,7 +134,17 @@ moved more than every constant in the game put together: battles 5.5 -> 7.3,
 outlaw band occupancy 8% -> 18%, doctrine spread 33pt -> 25pt. Adding plunder on
 top took battles to 8.9 and the spread to 12pt.
 
-**The houses do not pull apart.** The leader finishes 1.5 land and 0.5 fealty
+**Land had to be recycled and there had to be more of it, and neither worked
+alone.** Failed taxes are now paid in land, and those fields go back to the
+unclaimed pool rather than out of play; the pool itself went from 2 fields per
+player to 3. Measured apart: the land-tax improves a winner's mix and starves
+the board (priced-out turns 17% -> 26%); the bigger pool fixes affordability and
+does nothing for the mix. Together, enjoyment 69 -> 72 and gold at the end lands
+on 10. The full table is in RULES.md Appendix B, along with a note on the
+double-counted penalty that made the comparison come out backwards the first
+time.
+
+**The houses do not pull apart on standing.** The leader finishes 1.5 land and 0.5 fealty
 ahead of the median at four players, and the fealty gap *peaks* around round 5
 and then shrinks — everybody arrives at the top of the track together and the
 throne comes down to a tie-break nobody can move. That is why war had to be made
