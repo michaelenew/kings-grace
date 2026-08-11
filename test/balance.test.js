@@ -153,17 +153,26 @@ test('every table size from three to six plays a whole game', async () => {
   }
 });
 
-// The crown does not get *weaker* as the table grows — that was tried and it is
-// wrong. It is flat by default: a bigger table already supplies more houses who
-// might rally to the throne, so adding strength on top of that shut the coup
-// down entirely at five and six players. The per-player term is still a knob.
-test('the crown never weakens as the table grows', async () => {
-  const strengths = [];
+// REVERSED, on evidence. This test used to assert that the crown never weakens
+// as the table grows, on the reasoning that a bigger table already supplies more
+// houses who might rally to the throne. The first half of that is true and the
+// conclusion does not follow: a bigger table raises a bigger *crowd*, not a
+// bigger coalition, and the largest-single-contributor rule gets harder to
+// satisfy as a conspiracy grows. Measured, coups are tried more often at six
+// players and land at 18% against 43% at three.
+//
+// So the crown now weakens slightly with the table, and what is asserted is the
+// thing that actually matters: the same rules should play as the same game at
+// every size. Raising it instead shuts usurpation down to 1% at five and six.
+test('the same rules play as the same game at every table size', async () => {
+  const usurp = [];
   for (const players of [3, 4, 5, 6]) {
-    const { tuning } = await tournament({}, { n: 1, players });
-    strengths.push(tuning.crownBase + tuning.crownPerPlayer * players);
+    const { summary } = await at(players);
+    usurp.push(summary.usurp);
   }
-  for (let i = 1; i < strengths.length; i++) {
-    assert.ok(strengths[i] >= strengths[i - 1], `crown offsets ${strengths}`);
+  const spread = Math.max(...usurp) - Math.min(...usurp);
+  assert.ok(spread < 25, `usurpation runs ${usurp.map((u) => u.toFixed(0)).join('/')}% across three to six players`);
+  for (const u of usurp) {
+    assert.ok(u > 15 && u < 80, `usurpation at ${u.toFixed(0)}% shuts one road`);
   }
 });

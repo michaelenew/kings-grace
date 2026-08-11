@@ -32,16 +32,33 @@ export const RULES = {
   deck: { tax: 3, levy: 4, favor: 3 },
 
   // ---- The Crown ------------------------------------------------------
-  // Crown strength = crownBase + crownPerPlayer x players + cards remaining.
-  // A bigger table can raise a bigger coalition, so the throne stands taller.
+  // Crown strength = round(crownBase + crownPerPlayer x players + per-card x
+  // cards remaining).
   //
-  // Do not raise the offset far past this. A crown nobody can reach means the
+  // Do not raise the base far past this. A crown nobody can reach means the
   // first player to +3 cannot be deposed — nothing in the game lowers a rival's
   // fealty — and the Herald then wins every tie forever. At an offset of 8 the
   // Herald's holder won 1.76x their share of games against 1.41x at 6. The coup
   // is the only check on the heir.
-  crownBase: 6,
-  crownPerPlayer: 0,
+  crownBase: 7,
+  /**
+   * Negative, which reverses an earlier ruling that the crown must never weaken
+   * as the table grows. That ruling was an instinct made before there was
+   * anything to measure it against, and the measurements do not support it.
+   *
+   * A bigger table does not raise a bigger coalition — it raises a bigger
+   * *crowd*. More houses are free to throw gold behind the throne, and the
+   * largest-single-contributor rule gets harder to satisfy as a conspiracy
+   * grows, so coups are tried more often and land far less: 43% at three
+   * players against 18% at six. Left flat, usurpation ran 59% of games at three
+   * players and 32% at six — the same rules playing as two different games.
+   *
+   * A quarter-point per house roughly halves that: 53/47/38/38 across three to
+   * six. It costs about a point of the enjoyment score at three players, where
+   * the coup-heavy game happened to score well, and buys consistency the
+   * enjoyment score does not measure because it scores each table size alone.
+   */
+  crownPerPlayer: -0.25,
   /**
    * 1.4, not 1, because the deck is ten cards rather than twelve. What this
    * number really controls is how fast the coup window *opens*: the crown

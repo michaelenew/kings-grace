@@ -26,14 +26,25 @@ is in Appendix B.
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **6 + 1.4 × cards remaining**, rounded —
-running 20 down to 6 as the deck empties.
+**Crown strength** at any moment = **round(7 − 0.25 × players + 1.4 × cards
+remaining)** — at four players, 20 down to 6 as the deck empties.
 
-The per-player term is a knob and it defaults to zero. Growing the crown with
-the table was tried and it shuts the coup down: a bigger table already supplies
-more houses who might rally to the throne, and adding strength on top of that
-took usurpation to 1% at five and six players. What it must never do is *shrink*
-as the table grows.
+The per-player term is negative, which **reverses** an earlier ruling in this
+document that the crown must never weaken as the table grows. That ruling was an
+instinct written before there was anything to measure it against.
+
+A bigger table does raise more houses who might rally to the throne — but it
+raises a bigger *crowd*, not a bigger coalition. More houses are free to throw
+gold behind the Crown, and the largest-single-contributor rule gets harder to
+satisfy as a conspiracy grows, so coups are attempted more often at a big table
+and land far less: 39% of attempts succeed at three players against 21% at six.
+Left flat, usurpation took 59% of three-player games and 32% of six-player ones —
+the same rules playing as two different games, with three players a coup-heavy
+raider table.
+
+Easing the crown by a quarter-point a house roughly halves that. What it must
+never do is *grow* with the table: that shuts usurpation down to 1% at five and
+six players.
 
 ---
 

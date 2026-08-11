@@ -26,8 +26,11 @@ test('crown strength is the constant plus the cards left', () => {
     const g = makeGame({ players });
     return crownStrength(g.state);
   };
-  assert.ok(strengthAt(3) <= strengthAt(4), 'never weaker as the table grows');
-  assert.ok(strengthAt(4) <= strengthAt(6), 'nor at six');
+  // The crown eases very slightly as the table grows, because a bigger table is
+  // a bigger crowd rather than a bigger coalition — see the note in tuning.js.
+  // What must never happen is a swing large enough to shut either road.
+  assert.ok(strengthAt(3) >= strengthAt(6), 'eases as the table grows');
+  assert.ok(strengthAt(3) - strengthAt(6) <= 3, 'but only slightly');
   const g = makeGame();
   assert.equal(
     crownStrength(g.state),
@@ -37,7 +40,7 @@ test('crown strength is the constant plus the cards left', () => {
   // It has to decay to the base as the deck empties, or the coup window never
   // opens: the whole check on a runaway heir is that the throne gets reachable.
   g.state.deck = [];
-  assert.equal(crownStrength(g.state), RULES.crownBase);
+  assert.equal(crownStrength(g.state), Math.round(RULES.crownBase + RULES.crownPerPlayer * 4));
 });
 
 test('a game can be dealt for three through six players', () => {

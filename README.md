@@ -74,27 +74,32 @@ coups a real gamble, nobody priced out of their own turn — and prints what eac
 configuration is failing at. `test/balance.test.js` asserts the shipped rules
 still hit those targets, so the claims below are checked rather than remembered.
 
-Where it lands, across 800 games per table size:
+Where it lands, across 600 games per table size:
 
 | Players | Usurp | Inherit | Coups tried/game | Coups landed | Battles/game | Doctrine spread |
 |---|---|---|---|---|---|---|
-| 3 | 59% | 41% | 1.38 | 43% | 5.5 | 30pt |
-| 4 | 46% | 54% | 1.56 | 29% | 7.3 | 21pt |
-| 5 | 39% | 61% | 1.64 | 24% | 8.6 | 21pt |
-| 6 | 32% | 68% | 1.75 | 18% | 10.2 | 22pt |
+| 3 | 53% | 48% | 1.36 | 39% | 5.6 | 22pt |
+| 4 | 47% | 53% | 1.57 | 30% | 7.4 | 20pt |
+| 5 | 39% | 61% | 1.65 | 24% | 8.8 | 21pt |
+| 6 | 39% | 61% | 1.82 | 21% | 10.0 | 20pt |
 
-Both roads stay open at every size, which is the headline the constants were
-chosen for, but the balance between them slides with the table. The mechanism is
-in the middle two columns: bigger tables *try* more coups and land far fewer.
-Crown strength is flat with player count, so none of that gradient is the
-constant — it is coalition dynamics. More houses are free to throw gold behind
-the throne, and the largest-single-contributor rule gets harder to satisfy as a
-conspiracy grows.
+Both roads stay open at every size and the balance between them holds together
+across the table, which took reversing a ruling. The mechanism is in the middle
+two columns: bigger tables *try* more coups and land far fewer, because a bigger
+table raises a bigger **crowd** rather than a bigger coalition — more houses are
+free to throw gold behind the throne, and the largest-single-contributor rule
+gets harder to satisfy as a conspiracy grows.
 
-Three players is the outlier in more than one way: coup-heavy, and the least
-balanced table, with raider on 52% and shadow on 34% against a 33% baseline.
-Four and five sit closest to an even split of the two roads. Seat win rates sit
-within a couple of points of the 1/players baseline at every size.
+The crown used to be flat with player count, on the reasoning that a bigger
+table already supplies more houses who might rally to the throne. The first half
+of that is true and the conclusion does not follow. Flat, usurpation ran 59% of
+games at three players and 32% at six — the same rules playing as two different
+games, with three players a coup-heavy raider table (raider 52%, doctrine spread
+30pt). The crown now eases by a quarter-point per house, which roughly halves
+that variation and pulls the doctrine spread to a flat ~21pt at every size.
+
+Seat win rates sit within a couple of points of the 1/players baseline
+everywhere.
 
 ### What the measurements say, and what they cannot
 
