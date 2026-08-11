@@ -1,0 +1,633 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { BAND, CARD, CROWN, ORDER, SETUP, bandOf } from '../src/engine/constants.js';
+import { buildDeck, crownStrength, legalOrders } from '../src/engine/state.js';
+import { makeRng } from '../src/engine/rng.js';
+import { fillOrders, get, makeGame, set } from './_helpers.js';
+
+// ---------------------------------------------------------------- setup (§1)
+
+test('setup matches the rules sheet', () => {
+  const g = makeGame();
+  assert.equal(g.state.players.length, SETUP.PLAYERS);
+  for (const p of g.state.players) {
+    assert.equal(p.lands, 3);
+    assert.equal(p.gold, 5);
+    assert.equal(p.fealty, 0);
+  }
+  assert.equal(g.state.neutralPool, 8);
+  assert.equal(g.state.deck.length, 12);
+  assert.equal(crownStrength(g.state), 16, 'crown strength starts at 16');
+});
+
+test('crown deck holds 4 tax, 4 levy, 3 favor, 1 purge', () => {
+  const deck = buildDeck(makeRng(3), false);
+  const count = (c) => deck.filter((x) => x === c).length;
+  assert.equal(count(CARD.TAX), 4);
+  assert.equal(count(CARD.LEVY), 4);
+  assert.equal(count(CARD.FAVOR), 3);
+  assert.equal(count(CARD.PURGE), 1);
+});
+
+test('the tuning knob seeds a Favor into the first three flips', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const deck = buildDeck(makeRng(seed), true);
+    assert.ok(deck.slice(0, 3).includes(CARD.FAVOR), `seed ${seed}`);
+    assert.equal(deck.length, 12);
+    assert.equal(deck.filter((c) => c === CARD.FAVOR).length, 3);
+  }
+});
+
+test('fealty bands', () => {
+  assert.equal(bandOf(3), BAND.FAVORITE);
+  assert.equal(bandOf(2), BAND.FAVORITE);
+  assert.equal(bandOf(1), BAND.NEUTRAL);
+  assert.equal(bandOf(-1), BAND.NEUTRAL);
+  assert.equal(bandOf(-2), BAND.OUTLAW);
+  assert.equal(bandOf(-3), BAND.OUTLAW);
+});
+
+// ------------------------------------------------------------ crown deck (§6)
+
+test('tax charges by band, Chancellor pays 1 less, and nobody pays what they lack', () => {
+  const g = makeGame();
+  set(g.state, 'p0', { fealty: 2, gold: 10 }); // favorite: 1
+  set(g.state, 'p1', { fealty: 0, gold: 10 }); // neutral: 2
+  set(g.state, 'p2', { fealty: -3, gold: 10, titles: ['chancellor'] }); // outlaw 3, less 1
+  set(g.state, 'p3', { fealty: -2, gold: 1 }); // outlaw 3, only has 1
+  g.resolveTax();
+  assert.equal(get(g.state, 'p0').gold, 9);
+  assert.equal(get(g.state, 'p1').gold, 8);
+  assert.equal(get(g.state, 'p2').gold, 8);
+  assert.equal(get(g.state, 'p3').gold, 0);
+  assert.equal(g.state.crownGold, 1 + 2 + 2 + 1);
+});
+
+test('levy: pay 2 or drop a fealty, and the poor have no choice', async () => {
+  const g = makeGame({
+    controllers: {
+      p0: { levy: 'pay' },
+      p1: { levy: 'fealty' },
+      p3: { levy: 'pay' },
+    },
+  });
+  set(g.state, 'p2', { gold: 1 }); // cannot pay
+  set(g.state, 'p3', { fealty: -3 });
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p0').gold, 3);
+  assert.equal(get(g.state, 'p1').fealty, -1);
+  assert.equal(get(g.state, 'p2').gold, 1);
+  assert.equal(get(g.state, 'p2').fealty, -1);
+  assert.equal(get(g.state, 'p3').gold, 3);
+});
+
+test('levy at the floor of the track costs nothing', async () => {
+  const g = makeGame({ controllers: { p0: { levy: 'fealty' } } });
+  set(g.state, 'p0', { fealty: -3, gold: 5 });
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p0').fealty, -3);
+  assert.equal(get(g.state, 'p0').gold, 5);
+});
+
+test('favor rewards a single leader only', () => {
+  const g = makeGame();
+  set(g.state, 'p1', { fealty: 2 });
+  g.resolveFavor();
+  assert.equal(get(g.state, 'p1').lands, 4);
+  assert.equal(g.state.neutralPool, 7);
+
+  set(g.state, 'p2', { fealty: 2 });
+  g.resolveFavor();
+  assert.equal(get(g.state, 'p1').lands, 4, 'tie: no effect');
+  assert.equal(g.state.neutralPool, 7);
+});
+
+test('favor does nothing once the neutral pool is empty', () => {
+  const g = makeGame();
+  g.state.neutralPool = 0;
+  set(g.state, 'p1', { fealty: 2 });
+  g.resolveFavor();
+  assert.equal(get(g.state, 'p1').lands, 3);
+});
+
+test('purge takes a land from a single lowest player', () => {
+  const g = makeGame();
+  set(g.state, 'p3', { fealty: -2 });
+  g.resolvePurge();
+  assert.equal(get(g.state, 'p3').lands, 2);
+  assert.equal(g.state.crownLands, 1);
+
+  set(g.state, 'p2', { fealty: -2 });
+  g.resolvePurge();
+  assert.equal(get(g.state, 'p3').lands, 2, 'tie: no effect');
+});
+
+// -------------------------------------------------------------- orders (§4)
+
+test('legal orders track what you can afford', () => {
+  const g = makeGame();
+  const p = get(g.state, 'p0');
+  p.gold = 0;
+  assert.deepEqual(legalOrders(g.state, p), [ORDER.HOLD]);
+  p.gold = 1;
+  assert.deepEqual(legalOrders(g.state, p), [ORDER.ATTACK, ORDER.SUPPORT]);
+  p.gold = 2;
+  assert.ok(legalOrders(g.state, p).includes(ORDER.PETITION));
+  p.gold = 3;
+  assert.ok(legalOrders(g.state, p).includes(ORDER.DEVELOP));
+  p.fealty = -2; // pardon costs 3
+  p.gold = 2;
+  assert.ok(!legalOrders(g.state, p).includes(ORDER.PETITION));
+});
+
+test('committing escrows gold immediately and a turncoat change refunds it', () => {
+  const g = makeGame();
+  g.commit('p0', { order: ORDER.ATTACK, target: 'p1', gold: 4 });
+  assert.equal(get(g.state, 'p0').gold, 1);
+  assert.equal(get(g.state, 'p0').escrow, 4);
+  g.recommit('p0', { order: ORDER.DEVELOP });
+  assert.equal(get(g.state, 'p0').gold, 2);
+  assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP);
+});
+
+test('develop takes a land from the pool; a depleted pool refunds the purse', async () => {
+  const g = makeGame();
+  g.state.neutralPool = 1;
+  fillOrders(g, {
+    p0: { order: ORDER.DEVELOP },
+    p1: { order: ORDER.DEVELOP },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  const lands = [get(g.state, 'p0').lands, get(g.state, 'p1').lands].sort();
+  assert.deepEqual(lands, [3, 4], 'only one land was available');
+  assert.equal(g.state.neutralPool, 0);
+  const golds = [get(g.state, 'p0').gold, get(g.state, 'p1').gold].sort();
+  assert.deepEqual(golds, [2, 5], 'the player who missed out gets the 3 gold back');
+});
+
+// -------------------------------------------------------------- combat (§5)
+
+test('walls are 2 and ties favor the defender', async () => {
+  const g = makeGame();
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').lands, 3, 'a tie is thrown back');
+  assert.equal(get(g.state, 'p0').lands, 3);
+});
+
+test('strictly greater takes a land', async () => {
+  const g = makeGame();
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 3 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').lands, 2);
+  assert.equal(get(g.state, 'p0').lands, 4);
+});
+
+test('an attacker has no walls, and their titles can be stripped', async () => {
+  const g = makeGame({ controllers: { p0: { spoils: { kind: 'title', title: 'marshal' } } } });
+  set(g.state, 'p1', { titles: ['marshal'], gold: 10 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.ATTACK, target: 'p2', gold: 1 },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').titles.length, 0);
+  assert.deepEqual(get(g.state, 'p0').titles, ['marshal']);
+  assert.equal(get(g.state, 'p1').lands, 3, 'the title was taken instead of a land');
+});
+
+test('Marshal adds to attack and Warden adds to defense', async () => {
+  const g = makeGame();
+  set(g.state, 'p0', { titles: ['marshal'] });
+  set(g.state, 'p1', { titles: ['warden'] });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 3 }, // 3 + 1 = 4 vs 2 + 1 = 3
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').lands, 2);
+});
+
+test('a favorite punches down but not sideways or up', async () => {
+  // p0 at +3 attacking p1 at 0 with 1 gold: 1 + 3 = 4 beats walls of 2.
+  const down = makeGame();
+  set(down.state, 'p0', { fealty: 3, titleGrants: { 2: true, 3: true } });
+  fillOrders(down, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await down.resolvePhase();
+  assert.equal(get(down.state, 'p1').lands, 2);
+
+  // Same attack against an equal: no bonus, 1 against 2, thrown back.
+  const level = makeGame();
+  set(level.state, 'p0', { fealty: 3, titleGrants: { 2: true, 3: true } });
+  set(level.state, 'p1', { fealty: 3, titleGrants: { 2: true, 3: true } });
+  fillOrders(level, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await level.resolvePhase();
+  assert.equal(get(level.state, 'p1').lands, 3);
+});
+
+test('support goes to the target\'s attack when they attack, else to their defense', async () => {
+  const attackSide = makeGame();
+  fillOrders(attackSide, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.SUPPORT, target: 'p0', gold: 2 }, // 1 + 2 = 3 > 2
+    p3: { order: ORDER.PETITION },
+  });
+  await attackSide.resolvePhase();
+  assert.equal(get(attackSide.state, 'p1').lands, 2);
+
+  const defenseSide = makeGame();
+  fillOrders(defenseSide, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 4 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.SUPPORT, target: 'p1', gold: 2 }, // defense 2 + 2 = 4, ties hold
+    p3: { order: ORDER.PETITION },
+  });
+  await defenseSide.resolvePhase();
+  assert.equal(get(defenseSide.state, 'p1').lands, 3);
+});
+
+test('Herald wins ties it is party to, attacking or defending', async () => {
+  const attacking = makeGame();
+  set(attacking.state, 'p0', { titles: ['herald'] });
+  fillOrders(attacking, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await attacking.resolvePhase();
+  assert.equal(get(attacking.state, 'p1').lands, 2);
+
+  const defending = makeGame();
+  set(defending.state, 'p1', { titles: ['herald'] });
+  fillOrders(defending, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await defending.resolvePhase();
+  assert.equal(get(defending.state, 'p1').lands, 3);
+});
+
+test('several attacks hit the same defense and each takes its own spoils', async () => {
+  const g = makeGame();
+  set(g.state, 'p1', { gold: 10 });
+  set(g.state, 'p2', { gold: 10 });
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.ATTACK, target: 'p0', gold: 3 },
+    p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').lands, 1, 'both attacks got through');
+  assert.equal(get(g.state, 'p1').lands, 4);
+  assert.equal(get(g.state, 'p2').lands, 4);
+});
+
+// ------------------------------------------------- fealty and timing (§3, §4)
+
+test('attacking a favorite costs 2 fealty, an outlaw pays 1', async () => {
+  const g = makeGame();
+  set(g.state, 'p1', { fealty: 2, titleGrants: { 2: true, 3: true } });
+  set(g.state, 'p3', { fealty: -2 });
+  set(g.state, 'p2', { gold: 8 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.ATTACK, target: 'p3', gold: 1 },
+    p3: { order: ORDER.DEVELOP },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').fealty, -2);
+  assert.equal(get(g.state, 'p2').fealty, 1);
+});
+
+test('a pardon lands before the swords do, so the raider gets no bounty', async () => {
+  const g = makeGame();
+  set(g.state, 'p1', { fealty: -2, gold: 5 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION }, // pardon: −2 -> 0
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p1').fealty, 0);
+  assert.equal(get(g.state, 'p0').fealty, 0, 'p1 was neutral when the attack resolved');
+});
+
+test('petitioning to +2 grants a title in time to use it that same round', async () => {
+  const g = makeGame({ controllers: { p0: { title: 'marshal' } } });
+  set(g.state, 'p0', { fealty: 1, gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.deepEqual(get(g.state, 'p0').titles, ['marshal']);
+  assert.equal(get(g.state, 'p0').titleGrants[2], true);
+});
+
+test('each fealty threshold grants a title only once, ever', async () => {
+  const g = makeGame({ controllers: { p0: { title: (r) => r.available[0] } } });
+  set(g.state, 'p0', { fealty: 2, titleGrants: { 2: true, 3: false }, titles: ['warden'] });
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').fealty, 3);
+  assert.equal(get(g.state, 'p0').titles.length, 2);
+
+  // Drop back down and climb again: no third title.
+  set(g.state, 'p0', { fealty: 2, gold: 10 });
+  g.state.commitments = {};
+  fillOrders(g, {
+    p0: { order: ORDER.PETITION },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').titles.length, 2);
+});
+
+// ---------------------------------------------------------- usurpation (§5)
+
+test('a winning coalition crowns its largest contributor', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX]; // crown strength 5
+  set(g.state, 'p0', { gold: 4 });
+  set(g.state, 'p1', { gold: 3 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 4 },
+    p1: { order: ORDER.ATTACK, target: CROWN, gold: 3 },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.deepEqual(g.state.winner, { playerIds: ['p0'], how: 'usurp' });
+});
+
+test('equal contributions end in civil war, not a coronation', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX]; // strength 5
+  set(g.state, 'p0', { gold: 4 });
+  set(g.state, 'p1', { gold: 4 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 4 },
+    p1: { order: ORDER.ATTACK, target: CROWN, gold: 4 },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(g.state.winner, null);
+  assert.equal(get(g.state, 'p0').fealty, -3);
+  assert.equal(get(g.state, 'p1').fealty, -3);
+});
+
+test('a failed coup casts every conspirator down and takes a land each', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX, CARD.TAX, CARD.TAX]; // strength 7
+  set(g.state, 'p0', { gold: 3 });
+  set(g.state, 'p1', { gold: 3 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 3 },
+    p1: { order: ORDER.ATTACK, target: CROWN, gold: 3 },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(g.state.winner, null);
+  for (const pid of ['p0', 'p1']) {
+    assert.equal(get(g.state, pid).fealty, -3);
+    assert.equal(get(g.state, pid).lands, 2);
+  }
+  assert.equal(g.state.crownLands, 2);
+});
+
+test('support for the Crown can hold the throne', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX]; // strength 5
+  set(g.state, 'p0', { gold: 6 });
+  set(g.state, 'p2', { gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 6 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.SUPPORT, target: CROWN, gold: 2 }, // defense 7 vs 6
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(g.state.winner, null);
+  assert.equal(get(g.state, 'p0').fealty, -3);
+});
+
+test('no punching-down bonus applies against the Crown', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX]; // strength 5
+  set(g.state, 'p0', { gold: 5, fealty: 3, titleGrants: { 2: true, 3: true } });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 5 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(g.state.winner, null, '5 against 5 is not strictly greater');
+});
+
+test('a failed coup does not shield the conspirator from their neighbours', async () => {
+  const g = makeGame();
+  g.state.deck = [CARD.TAX, CARD.TAX, CARD.TAX]; // strength 7
+  set(g.state, 'p0', { gold: 3 });
+  set(g.state, 'p1', { gold: 3 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: CROWN, gold: 3 },
+    p1: { order: ORDER.ATTACK, target: 'p0', gold: 1 }, // p0's walls are down
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').lands, 1, 'one land to the Crown, one to p1');
+  assert.equal(get(g.state, 'p1').lands, 4);
+});
+
+// ------------------------------------------------------------- income (§3.4)
+
+test('income pays per land, plus the neutral granary and the Steward', () => {
+  const g = makeGame();
+  set(g.state, 'p0', { lands: 4, fealty: 0, gold: 0 });
+  set(g.state, 'p1', { lands: 2, fealty: 2, gold: 0 });
+  set(g.state, 'p2', { lands: 3, fealty: -3, gold: 0, titles: ['steward'] });
+  set(g.state, 'p3', { lands: 1, fealty: 1, gold: 0 });
+  g.incomeStep();
+  assert.equal(get(g.state, 'p0').gold, 5);
+  assert.equal(get(g.state, 'p1').gold, 2);
+  assert.equal(get(g.state, 'p2').gold, 4);
+  assert.equal(get(g.state, 'p3').gold, 2);
+});
+
+// ------------------------------------------------------------ victory (§8)
+
+test('the deck running out crowns the highest fealty, breaking ties on land then gold', () => {
+  const g = makeGame();
+  set(g.state, 'p0', { fealty: 1, lands: 3, gold: 9 });
+  set(g.state, 'p1', { fealty: 2, lands: 2, gold: 1 });
+  set(g.state, 'p2', { fealty: 2, lands: 3, gold: 0 });
+  set(g.state, 'p3', { fealty: 0, lands: 9, gold: 9 });
+  g.inherit();
+  assert.deepEqual(g.state.winner, { playerIds: ['p2'], how: 'inherit' });
+});
+
+test('a dead heat crowns co-rulers', () => {
+  const g = makeGame();
+  for (const pid of ['p0', 'p1', 'p2', 'p3']) set(g.state, pid, { fealty: 0, lands: 3, gold: 5 });
+  g.inherit();
+  assert.equal(g.state.winner.playerIds.length, 4);
+});
+
+// ----------------------------------------------------- table talk & turncoat
+
+test('gold can be given away, but escrowed gold cannot', () => {
+  const g = makeGame();
+  assert.equal(g.gift('p0', 'p1', 3), true);
+  assert.equal(get(g.state, 'p0').gold, 2);
+  assert.equal(get(g.state, 'p1').gold, 8);
+  g.commit('p0', { order: ORDER.ATTACK, target: 'p1', gold: 2 });
+  assert.equal(g.gift('p0', 'p1', 1), false, 'nothing left outside the war chest');
+});
+
+test('an outlaw peeks and may turn a coat', async () => {
+  const g = makeGame({
+    controllers: {
+      p0: {
+        peekChoice: 'order',
+        peekTarget: 'p1',
+        turncoat: { action: 'change' },
+        order: (req) => (req.reason === 'turncoat'
+          ? { order: ORDER.DEVELOP }
+          : { order: ORDER.ATTACK, target: 'p1', gold: 1 }),
+      },
+    },
+  });
+  set(g.state, 'p0', { fealty: -2, gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.peekPhase();
+  assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP);
+  assert.deepEqual(Object.keys(g.state.knowledge.p0.orders), ['p1']);
+});
+
+test('an outlaw at −3 sees both a rival order and the top card', async () => {
+  const g = makeGame({ controllers: { p0: { peekTarget: 'p2' } } });
+  set(g.state, 'p0', { fealty: -3, gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.DEVELOP },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.peekPhase();
+  assert.equal(g.state.knowledge.p0.topCard, g.state.deck[0]);
+  assert.ok(g.state.knowledge.p0.orders.p2);
+});
+
+test('the change right can be handed to another player', async () => {
+  const g = makeGame({
+    controllers: {
+      p0: { turncoat: { action: 'give', to: 'p1' } },
+      p1: {
+        turncoatGranted: { action: 'change' },
+        order: (req) => (req.reason === 'turncoat' ? { order: ORDER.DEVELOP } : { order: ORDER.PETITION }),
+      },
+    },
+  });
+  set(g.state, 'p0', { fealty: -2, gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.DEVELOP },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.peekPhase();
+  assert.equal(g.state.commitments.p1.order, ORDER.DEVELOP);
+  assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP, 'the giver keeps their own order');
+});
+
+// ------------------------------------------------------ ransom module (§9)
+
+test('ransom steals gold and reads the target\'s band', async () => {
+  const g = makeGame({ options: { ransom: true } });
+  set(g.state, 'p1', { fealty: 2, gold: 5, titleGrants: { 2: true, 3: true } });
+  set(g.state, 'p3', { fealty: -2, gold: 5 });
+  fillOrders(g, {
+    p0: { order: ORDER.RANSOM, target: 'p1' },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.RANSOM, target: 'p3' },
+    p3: { order: ORDER.DEVELOP },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').gold, 7);
+  assert.equal(get(g.state, 'p0').fealty, -2, 'the crown protects its own');
+  assert.equal(get(g.state, 'p2').fealty, 1, 'bounty hunting pays');
+  assert.equal(get(g.state, 'p0').ransomUsed, true);
+});
+
+test('ransoming the Crown pays 5 gold and outlaws you', async () => {
+  const g = makeGame({ options: { ransom: true } });
+  fillOrders(g, {
+    p0: { order: ORDER.RANSOM, target: CROWN },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.resolvePhase();
+  assert.equal(get(g.state, 'p0').gold, 10);
+  assert.equal(get(g.state, 'p0').fealty, -3);
+});
+
+test('ransom is once per game', () => {
+  const g = makeGame({ options: { ransom: true } });
+  const p = get(g.state, 'p0');
+  assert.ok(legalOrders(g.state, p).includes(ORDER.RANSOM));
+  p.ransomUsed = true;
+  assert.ok(!legalOrders(g.state, p).includes(ORDER.RANSOM));
+});
