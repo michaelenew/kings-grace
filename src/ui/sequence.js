@@ -10,13 +10,7 @@ export const STAGES = [
     id: 'crownFlip',
     label: 'The royal card',
     phases: ['crownFlip'],
-    detail: 'Turn the top card of the royal deck and resolve it at once — a tax, a levy, a favour granted, or a scapegoat purged. Everything after this happens knowing what the Crown just did.',
-  },
-  {
-    id: 'deals',
-    label: 'Deals',
-    phases: ['deals'],
-    detail: 'Strike bargains. Gold, land, titles and turncoat tokens change hands the moment every house named in a deal accepts. Anything anybody promises to *do* is not part of the deal and binds nobody.',
+    detail: 'Turn the top card of the royal deck and resolve it at once — a tax, a levy, or a favour paid to the loyal. Outlaws take their turncoat token now, and can bargain with it for the rest of the round. Everything after this happens knowing what the Crown just did.',
   },
   {
     id: 'commit',
@@ -28,7 +22,7 @@ export const STAGES = [
     id: 'peek',
     label: 'Whispers',
     phases: ['peek'],
-    detail: 'Outlaws look at what they should not: a rival’s sealed order, or the next royal card, or at −3 both. Each takes a turncoat token, and anyone holding one may spend it to change their own sealed order — including a token they bought from somebody else.',
+    detail: 'Outlaws look at what they should not: a rival’s sealed order, or the next royal card, or at −3 both. Anyone holding a turncoat token may spend it here to change their own sealed order — including a token they bought earlier in the round.',
   },
   {
     id: 'resolve',
@@ -44,14 +38,13 @@ export function stageFor(phase) {
 
 /**
  * @param {object} state
- * @param {string|null} hovered stage id the pointer is over
- * @param {(id: string|null) => void} onHover
+ * @param {(title: string, text: string) => void} explain opens a popover
  */
-export function sequenceCard(state, hovered, onHover) {
+export function sequenceCard(state, explain) {
   const remaining = {};
   for (const card of state.deck) remaining[card] = (remaining[card] || 0) + 1;
   const current = stageFor(state.phase);
-  const shown = STAGES.find((s) => s.id === (hovered || current));
+  const shown = STAGES.find((s) => s.id === current);
 
   return el('aside', { class: 'sequence' }, [
     el('div', { class: 'deck-count' }, [
@@ -65,17 +58,17 @@ export function sequenceCard(state, hovered, onHover) {
         .concat(state.deck.length ? [] : [el('span', { class: 'deck-tag' }, 'the deck is spent')])),
 
     el('h3', {}, 'The round'),
-    el('ol', { class: 'stages' }, STAGES.map((stage, i) => el('li', {
-      class: `stage-step${stage.id === current ? ' now' : ''}${stage.id === hovered ? ' hovered' : ''}`,
-      onmouseenter: () => onHover(stage.id),
-      onmouseleave: () => onHover(null),
-      onfocus: () => onHover(stage.id),
-      onblur: () => onHover(null),
-      tabindex: 0,
-    }, [
-      el('span', { class: 'stage-num' }, String(i + 1)),
-      el('span', { class: 'stage-label' }, stage.label),
+    el('ol', { class: 'stages' }, STAGES.map((stage, i) => el('li', {}, [
+      el('button', {
+        class: `stage-step${stage.id === current ? ' now' : ''}`,
+        onclick: () => explain(stage.label, stage.detail),
+      }, [
+        el('span', { class: 'stage-num' }, String(i + 1)),
+        el('span', { class: 'stage-label' }, stage.label),
+        el('span', { class: 'stage-more' }, '?'),
+      ]),
     ]))),
+    el('p', { class: 'hint' }, 'Deals are not a step — strike them at any time until the orders resolve. Click a step for detail.'),
 
     el('div', { class: 'stage-detail' }, [
       el('h5', {}, shown ? shown.label : ''),

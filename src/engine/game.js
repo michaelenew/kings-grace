@@ -91,8 +91,8 @@ export class Game {
     while (!s.winner) {
       await this.crownFlip();
       if (s.winner) break;
+      this.grantTurncoatTokens();
       await this.pause('crown');
-      await this.dealPhase();
       await this.commitPhase();
       await this.peekPhase();
       await this.resolvePhase();
@@ -123,7 +123,6 @@ export class Game {
     if (card === CARD.TAX) this.resolveTax();
     else if (card === CARD.LEVY) await this.resolveLevy();
     else if (card === CARD.FAVOR) this.resolveFavor();
-    else if (card === CARD.PURGE) this.resolvePurge();
 
     this.notify();
   }
@@ -141,9 +140,24 @@ export class Game {
   }
 
   async resolveLevy() {
-    for (const p of seatOrder(this.state)) {
+    const s = this.state;
+    for (const p of seatOrder(s)) {
       let choice;
-      const levy = this.state.tuning.levyCost;
+      const levy = s.tuning.levyCost;
+      // Optional rule: the levy falls on the outlaws as a seizure of land
+      // rather than a demand for coin. They are not being taxed, they are
+      // being made an example of.
+      if (s.options.levyTargetsOutlaws && bandOf(p.fealty) === BAND.OUTLAW) {
+        const due = p.fealty <= -3 ? 2 : 1;
+        const taken = Math.min(due, p.lands);
+        p.lands -= taken;
+        s.crownLands += taken;
+        const short = taken < due ? ` (owed ${due}, had only ${taken})` : '';
+        this.emit('levy', taken
+          ? `Levy: the Crown seizes ${taken} land${taken === 1 ? '' : 's'} from ${p.name}${short}.`
+          : `Levy: ${p.name} has no land left for the Crown to seize.`);
+        continue;
+      }
       if (p.gold < levy) {
         choice = 'fealty';
       } else {
@@ -167,39 +181,29 @@ export class Game {
     }
   }
 
+  /** Favor pays the loyal: gold to every favorite, and land at the top. */
   resolveFavor() {
     const s = this.state;
-    const best = Math.max(...s.players.map((p) => p.fealty));
-    const winners = s.players.filter((p) => p.fealty === best);
-    if (winners.length !== 1) {
-      this.emit('crown-card', 'Favor: the court cannot agree on a single favorite. No effect.');
+    const t = s.tuning;
+    const favorites = seatOrder(s).filter((p) => bandOf(p.fealty) === BAND.FAVORITE);
+    if (!favorites.length) {
+      this.emit('crown-card', 'Favor: the Crown looks for a friend and finds none.');
       return;
     }
-    if (s.neutralPool <= 0) {
-      this.emit('crown-card', 'Favor: no unclaimed land remains. No effect.');
-      return;
+    for (const p of favorites) {
+      p.gold += t.favorGold;
+      let note = '';
+      if (p.fealty >= t.favorLandAt) {
+        if (s.neutralPool > 0) {
+          s.neutralPool -= 1;
+          p.lands += 1;
+          note = ' and a land';
+        } else {
+          note = ' (no land left to grant)';
+        }
+      }
+      this.emit('crown-card', `Favor: ${p.name} is granted ${t.favorGold} gold${note}.`);
     }
-    s.neutralPool -= 1;
-    winners[0].lands += 1;
-    this.emit('crown-card', `Favor: ${winners[0].name} is granted a land from the neutral pool.`);
-  }
-
-  resolvePurge() {
-    const s = this.state;
-    const worst = Math.min(...s.players.map((p) => p.fealty));
-    const losers = s.players.filter((p) => p.fealty === worst);
-    if (losers.length !== 1) {
-      this.emit('crown-card', 'Purge: no single scapegoat. No effect.');
-      return;
-    }
-    const victim = losers[0];
-    if (victim.lands <= 0) {
-      this.emit('crown-card', `Purge: ${victim.name} has no land left to forfeit.`);
-      return;
-    }
-    victim.lands -= 1;
-    s.crownLands += 1;
-    this.emit('crown-card', `Purge: ${victim.name} forfeits a land to the Crown.`);
   }
 
   // -------------------------------------------------------- 2. commit (§3)
@@ -207,6 +211,8 @@ export class Game {
   async commitPhase() {
     const s = this.state;
     this.setPhase('commit');
+    await this.inviteBotDeals();
+    await this.inviteBotAcceptance();
     s.commitments = {};
     s.knowledge = {};
     s.revealed = false;
@@ -224,17 +230,36 @@ export class Game {
   }
 
   /**
-   * Table talk, before anyone seals anything (§3). A deal moves goods — gold,
-   * land, titles, turncoat tokens — and settles only when everyone named in it
-   * accepts. Whatever anybody says they will *do* with the proceeds is words,
-   * and words bind nobody.
+   * Outlaws take their token as the round opens, not at the whispers step, so
+   * they have the whole round to bargain with it.
    */
-  async dealPhase() {
+  grantTurncoatTokens() {
     const s = this.state;
-    s.pacts = {};
-    this.setPhase('deals');
-    const { proposeDeal } = await import('./deals.js');
+    for (const p of seatOrder(s)) {
+      if (bandOf(p.fealty) !== BAND.OUTLAW) continue;
+      if (p.turncoat >= s.tuning.turncoatMax) continue;
+      p.turncoat += 1;
+      this.emit('turncoat', `${p.name} takes a turncoat token.`);
+    }
+  }
+
+  /**
+   * Deals are not a step. They are open from the moment the royal card turns
+   * until orders start resolving, which is the whole point of them: a bargain
+   * struck after you have seen somebody's face is worth more than one struck to
+   * a schedule. `dealsOpen` is what the UI and the bots both read.
+   */
+  get dealsOpen() {
+    return !['resolve', 'income', 'gameOver', 'setup'].includes(this.state.phase);
+  }
+
+  /** Ask every bot whether it wants to put something to the table right now. */
+  async inviteBotDeals() {
+    const s = this.state;
+    if (!this.dealsOpen) return;
     for (const p of s.rng.shuffle(s.players.slice())) {
+      const controller = this.controllers[p.id];
+      if (!controller || controller.kind === 'human') continue;
       const deal = await this.ask(p.id, {
         type: 'proposeDeal',
         others: s.players.filter((x) => x.id !== p.id).map((x) => x.id),
@@ -244,24 +269,68 @@ export class Game {
     }
   }
 
-  /** Route a deal to the table and record any stated intent as a (loose) pact. */
-  async putDeal(deal) {
-    const { proposeDeal, dealBalance } = await import('./deals.js');
-    const result = await proposeDeal(this, deal);
-    if (result.accepted && deal.intent) {
-      const s = this.state;
-      const to = deal.intent.of;
-      if (to && this.player(to)) {
-        s.pacts[to] = {
-          kind: deal.intent.kind,
-          subject: deal.intent.subject || null,
-          with: deal.proposer,
-          paid: Math.max(0, dealBalance(s, deal, to)),
-          expected: deal.intent.expected ?? 2,
-        };
-      }
+  // ------------------------------------------------------ the open deal
+
+  /** Set a house's terms. Any change clears every acceptance (§3). */
+  async setDealTerms(pid, terms) {
+    const { setTerms } = await import('./dealtable.js');
+    setTerms(this.state, pid, terms);
+    this.emit('deal', `${this.nameOf(pid)} changes their terms; every acceptance is withdrawn.`, { quiet: true });
+    return this.state.dealTable;
+  }
+
+  async withdrawFromDeal(pid) {
+    const { withdraw } = await import('./dealtable.js');
+    withdraw(this.state, pid);
+    this.notify();
+    return this.state.dealTable;
+  }
+
+  /**
+   * Accept the terms as they stand. When everyone involved has accepted and the
+   * pot balances, it settles at once.
+   */
+  async acceptDeal(pid) {
+    const dt = await import('./dealtable.js');
+    if (!this.dealsOpen) return { settled: false, reason: 'The orders are already resolving.' };
+    dt.acceptTerms(this.state, pid);
+    const problem = dt.dealProblem(this.state, this.state.dealTable);
+    if (problem) { this.notify(); return { settled: false, reason: problem }; }
+    if (!dt.everyoneAccepted(this.state.dealTable)) {
+      const waiting = dt.dealParticipants(this.state.dealTable)
+        .filter((x) => !this.state.dealTable.accepted.includes(x))
+        .map((x) => this.nameOf(x));
+      this.notify();
+      return { settled: false, waiting };
     }
-    return result;
+    const moved = dt.settleTable(this);
+    this.emit('deal', `A bargain settles — ${moved.join('; ')}.`);
+    return { settled: true };
+  }
+
+  /** Bots look at the open pot and accept if it pays them. */
+  async inviteBotAcceptance() {
+    const dt = await import('./dealtable.js');
+    const table = this.state.dealTable;
+    if (dt.dealProblem(this.state, table)) return;
+    for (const pid of dt.dealParticipants(table)) {
+      const controller = this.controllers[pid];
+      if (!controller || controller.kind === 'human') continue;
+      if (table.accepted.includes(pid)) continue;
+      const answer = await this.ask(pid, {
+        type: 'dealTable',
+        balance: dt.balanceFor(this.state, table, pid),
+        table,
+      });
+      if (answer?.accept) await this.acceptDeal(pid);
+    }
+  }
+
+  /** Put a deal to the table. Goods only — nothing anybody says is part of it. */
+  async putDeal(deal) {
+    if (!this.dealsOpen) return { accepted: false, reason: 'The orders are already resolving.' };
+    const { proposeDeal } = await import('./deals.js');
+    return proposeDeal(this, deal);
   }
 
   /** Validate + escrow an order. Committed gold is spent immediately (§3). */
@@ -313,6 +382,8 @@ export class Game {
   async peekPhase() {
     const s = this.state;
     this.setPhase('peek');
+    await this.inviteBotDeals();
+    await this.inviteBotAcceptance();
     for (const p of s.players) if (!s.knowledge[p.id]) s.knowledge[p.id] = { orders: {}, topCard: null };
 
     for (const p of seatOrder(s)) {
@@ -331,10 +402,6 @@ export class Game {
             text: 'Outlaw at −2: peek at one player\'s order, or at the top crown card.',
           });
           await this.doPeek(p, pick === 'card' ? 'card' : 'order');
-        }
-        if (p.turncoat < s.tuning.turncoatMax) {
-          p.turncoat += 1;
-          this.emit('turncoat', `${p.name} pockets a turncoat token.`, { secret: true, pid: p.id });
         }
       }
 

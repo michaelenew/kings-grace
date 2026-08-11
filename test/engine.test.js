@@ -21,13 +21,13 @@ test('setup deals what the rules say', () => {
   assert.equal(g.state.deck.length, deckSize(RULES));
 });
 
-test('the crown stands taller the bigger the table', () => {
+test('crown strength is the constant plus the cards left', () => {
   const strengthAt = (players) => {
     const g = makeGame({ players });
     return crownStrength(g.state);
   };
-  assert.ok(strengthAt(3) < strengthAt(4), 'a bigger table can raise a bigger coalition');
-  assert.ok(strengthAt(4) < strengthAt(6), 'and a bigger one still at six');
+  assert.ok(strengthAt(3) <= strengthAt(4), 'never weaker as the table grows');
+  assert.ok(strengthAt(4) <= strengthAt(6), 'nor at six');
   const g = makeGame();
   assert.equal(
     crownStrength(g.state),
@@ -112,37 +112,52 @@ test('levy at the floor of the track costs nothing', async () => {
   assert.equal(get(g.state, 'p0').gold, 5);
 });
 
-test('favor rewards a single leader only', () => {
+test('favor pays every favorite, and land only at the top of the track', () => {
   const g = makeGame();
-  set(g.state, 'p1', { fealty: 2 });
+  const t = g.state.tuning;
+  set(g.state, 'p0', { fealty: 3, gold: 0, lands: 3 });
+  set(g.state, 'p1', { fealty: 2, gold: 0, lands: 3 });
+  set(g.state, 'p2', { fealty: 1, gold: 0, lands: 3 });
+  set(g.state, 'p3', { fealty: -2, gold: 0, lands: 3 });
+  const pool = g.state.neutralPool;
   g.resolveFavor();
-  assert.equal(get(g.state, 'p1').lands, 4);
-  assert.equal(g.state.neutralPool, 7);
-
-  set(g.state, 'p2', { fealty: 2 });
-  g.resolveFavor();
-  assert.equal(get(g.state, 'p1').lands, 4, 'tie: no effect');
-  assert.equal(g.state.neutralPool, 7);
+  assert.equal(get(g.state, 'p0').gold, t.favorGold, '+3 is paid');
+  assert.equal(get(g.state, 'p0').lands, 4, 'and takes a land');
+  assert.equal(get(g.state, 'p1').gold, t.favorGold, '+2 is paid');
+  assert.equal(get(g.state, 'p1').lands, 3, 'but takes no land');
+  assert.equal(get(g.state, 'p2').gold, 0, 'a neutral gets nothing');
+  assert.equal(get(g.state, 'p3').gold, 0, 'an outlaw gets nothing');
+  assert.equal(g.state.neutralPool, pool - 1);
 });
 
-test('favor does nothing once the neutral pool is empty', () => {
+test('favor still pays gold when no land remains', () => {
   const g = makeGame();
   g.state.neutralPool = 0;
-  set(g.state, 'p1', { fealty: 2 });
+  set(g.state, 'p0', { fealty: 3, gold: 0 });
   g.resolveFavor();
-  assert.equal(get(g.state, 'p1').lands, 3);
+  assert.equal(get(g.state, 'p0').gold, g.state.tuning.favorGold);
+  assert.equal(get(g.state, 'p0').lands, 3);
 });
 
-test('purge takes a land from a single lowest player', () => {
-  const g = makeGame();
-  set(g.state, 'p3', { fealty: -2 });
-  g.resolvePurge();
-  assert.equal(get(g.state, 'p3').lands, 2);
-  assert.equal(g.state.crownLands, 1);
+test('the optional levy seizes land from outlaws instead of coin', async () => {
+  const g = makeGame({ options: { levyTargetsOutlaws: true }, controllers: { p0: { levy: 'pay' } } });
+  set(g.state, 'p1', { fealty: -2, lands: 3 });
+  set(g.state, 'p2', { fealty: -3, lands: 3 });
+  set(g.state, 'p3', { fealty: -3, lands: 1 });
+  const goldBefore = get(g.state, 'p1').gold;
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p1').lands, 2, 'one land at −2');
+  assert.equal(get(g.state, 'p1').gold, goldBefore, 'and no coin');
+  assert.equal(get(g.state, 'p2').lands, 1, 'two lands at −3');
+  assert.equal(get(g.state, 'p3').lands, 0, 'or whatever is left');
+  assert.equal(g.state.crownLands, 4);
+});
 
-  set(g.state, 'p2', { fealty: -2 });
-  g.resolvePurge();
-  assert.equal(get(g.state, 'p3').lands, 2, 'tie: no effect');
+test('without the option, outlaws face the same levy as everyone', async () => {
+  const g = makeGame({ controllers: { p1: { levy: 'fealty' } } });
+  set(g.state, 'p1', { fealty: -2, lands: 3 });
+  await g.resolveLevy();
+  assert.equal(get(g.state, 'p1').lands, 3);
 });
 
 // -------------------------------------------------------------- orders (§4)
@@ -574,6 +589,8 @@ test('an outlaw peeks, earns a token and may spend it', async () => {
     },
   });
   set(g.state, 'p0', { fealty: -2, gold: 6 });
+  g.grantTurncoatTokens();
+  assert.equal(get(g.state, 'p0').turncoat, 1, 'the token arrives as the round opens');
   fillOrders(g, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
     p1: { order: ORDER.PETITION },
@@ -665,4 +682,89 @@ test('ransom is once per game', () => {
   assert.ok(legalOrders(g.state, p).includes(ORDER.RANSOM));
   p.ransomUsed = true;
   assert.ok(!legalOrders(g.state, p).includes(ORDER.RANSOM));
+});
+
+// ------------------------------------------------------- the open deal (§3)
+
+/** A game mid-round, when the deal table is open. */
+const openTable = (opts) => {
+  const g = makeGame(opts);
+  g.state.phase = 'commit';
+  return g;
+};
+
+test('an open deal settles only when it balances and everyone accepts', async () => {
+  const g = openTable();
+  set(g.state, 'p0', { gold: 10, lands: 3 });
+  set(g.state, 'p1', { gold: 4, lands: 3 });
+
+  await g.setDealTerms('p0', { offers: { gold: 6 }, takes: { lands: 1 } });
+  await g.setDealTerms('p1', { offers: { lands: 1 }, takes: { gold: 6 } });
+
+  let res = await g.acceptDeal('p0');
+  assert.equal(res.settled, false, 'one signature is not a bargain');
+  assert.deepEqual(res.waiting, ['Roderic of Thornfell']);
+
+  res = await g.acceptDeal('p1');
+  assert.equal(res.settled, true);
+  assert.equal(get(g.state, 'p0').gold, 4);
+  assert.equal(get(g.state, 'p0').lands, 4);
+  assert.equal(get(g.state, 'p1').gold, 10);
+  assert.equal(get(g.state, 'p1').lands, 2);
+  assert.equal(g.state.deals.length, 1);
+});
+
+test('a deal that does not balance never settles', async () => {
+  const g = openTable();
+  await g.setDealTerms('p0', { offers: { gold: 3 }, takes: {} });
+  await g.setDealTerms('p1', { offers: {}, takes: { gold: 5 } });
+  await g.acceptDeal('p0');
+  const res = await g.acceptDeal('p1');
+  assert.equal(res.settled, false);
+  assert.match(res.reason, /Gold does not balance/);
+  assert.equal(get(g.state, 'p1').gold, g.state.tuning.startGold);
+});
+
+test('changing any term withdraws every acceptance', async () => {
+  const g = openTable();
+  set(g.state, 'p0', { gold: 10 });
+  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
+  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
+  await g.acceptDeal('p0');
+  assert.deepEqual(g.state.dealTable.accepted, ['p0']);
+  await g.setDealTerms('p0', { offers: { gold: 5 }, takes: {} });
+  assert.deepEqual(g.state.dealTable.accepted, [], 'the signature is void');
+});
+
+test('nobody can put up what they do not hold', async () => {
+  const g = openTable();
+  await g.setDealTerms('p0', { offers: { gold: 999 }, takes: {} });
+  await g.setDealTerms('p1', { offers: {}, takes: { gold: 999 } });
+  await g.acceptDeal('p0');
+  const res = await g.acceptDeal('p1');
+  assert.equal(res.settled, false);
+  assert.match(res.reason, /has only/);
+});
+
+test('a three-cornered pot settles in one move', async () => {
+  const g = openTable();
+  set(g.state, 'p0', { gold: 10 });
+  set(g.state, 'p1', { lands: 3 });
+  set(g.state, 'p2', { titles: ['herald'] });
+  await g.setDealTerms('p0', { offers: { gold: 8 }, takes: { titles: ['herald'] } });
+  await g.setDealTerms('p1', { offers: { lands: 1 }, takes: { gold: 8 } });
+  await g.setDealTerms('p2', { offers: { titles: ['herald'] }, takes: { lands: 1 } });
+  for (const pid of ['p0', 'p1', 'p2']) await g.acceptDeal(pid);
+  assert.deepEqual(get(g.state, 'p0').titles, ['herald']);
+  assert.equal(get(g.state, 'p1').gold, g.state.tuning.startGold + 8);
+  assert.equal(get(g.state, 'p2').lands, g.state.tuning.startLands + 1);
+  assert.deepEqual(get(g.state, 'p2').titles, []);
+});
+
+test('deals shut once the orders are resolving', async () => {
+  const g = makeGame();
+  g.state.phase = 'resolve';
+  const res = await g.acceptDeal('p0');
+  assert.equal(res.settled, false);
+  assert.match(res.reason, /already resolving/);
 });

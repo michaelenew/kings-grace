@@ -394,9 +394,8 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     const marshal = has(me, 'marshal') ? t.marshalBonus : 0;
     const defense = view.crownStrength;
 
-    const offer = (to, gold, intent) => ({
+    const offer = (to, gold) => ({
       transfers: [{ from: me.id, to, goods: { ...emptyGoods(), gold } }],
-      intent,
     });
 
     // Can I take the throne if somebody lends me their sword?
@@ -407,7 +406,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
         const bribe = clamp(Math.ceil(ally.gold * 0.4), 1, Math.max(1, me.gold - 2));
         const theirSpend = Math.min(ally.gold, cap);
         if (reachAlone - bribe + theirSpend > defense + 1) {
-          return offer(ally.id, bribe, { kind: 'supportAttack', of: ally.id, expected: theirSpend });
+          if (theirSpend > 0) return offer(ally.id, bribe);
         }
       }
     }
@@ -431,7 +430,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       const hireling = others.filter((o) => o.id !== heir.id && o.gold >= 2).sort((a, b) => b.gold - a.gold)[0];
       if (hireling) {
         const gold = clamp(Math.floor(me.gold * 0.3), 1, 5);
-        return offer(hireling.id, gold, { kind: 'attack', of: hireling.id, subject: heir.id });
+        return offer(hireling.id, gold);
       }
     }
     return null;
@@ -468,6 +467,7 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     switch (request.type) {
       case 'proposeDeal': return chooseDeal(request, view);
       case 'deal': return considerDeal(request, view);
+      case 'dealTable': return { accept: request.balance > 0.5 };
       case 'order': return chooseOrder(request, view);
       case 'levy': return chooseLevy(request, view);
       case 'title': return chooseTitle(request, view);

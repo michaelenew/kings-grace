@@ -26,9 +26,14 @@ is in Appendix B.
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **2 + players + cards remaining in the crown
-deck**. At four players that is 6 + cards, running 18 down to 6. A bigger table
-can raise a bigger coalition, so the throne stands taller.
+**Crown strength** at any moment = **6 + cards remaining in the crown deck**,
+running 18 down to 6.
+
+The per-player term is a knob and it defaults to zero. Growing the crown with
+the table was tried and it shuts the coup down: a bigger table already supplies
+more houses who might rally to the throne, and adding strength on top of that
+took usurpation to 1% at five and six players. What it must never do is *shrink*
+as the table grows.
 
 ---
 
@@ -56,21 +61,26 @@ commitment time.
 
 One loop, five steps:
 
-1. **The royal card.** Reveal the top crown card and resolve it immediately (§6).
-2. **Deals.** Anyone may put a bargain to anyone. A deal is a list of transfers — gold, land, titles, turncoat tokens — between any number of houses, and settles the moment every house named in it accepts. What anybody says they will *do* is not part of the deal and binds nobody.
-3. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
-4. **Whispers.** Outlaws peek (§2) and take a turncoat token. Anyone holding a token may spend it to change their own sealed order — including a token they bought.
-5. **Reveal & resolve.** All orders flip at once and settle in a fixed order:
+1. **The royal card.** Reveal the top crown card and resolve it immediately (§6). Outlaws take their turncoat token now.
+2. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
+3. **Whispers.** Outlaws peek (§2). Anyone holding a turncoat token may spend it to change their own sealed order — including one they bought earlier in the round.
+4. **Reveal & resolve.** All orders flip at once and settle in a fixed order:
    1. **Appeals and pardons** — standing moves now, so every band effect is already updated when the swords land,
    2. **Develops** — land is settled,
    3. **Support** — counted toward whoever it was aimed at,
    4. **Attacks and spoils.**
-6. **Income.** Each land pays 1 gold; neutrals gain +1.
+5. **Income.** Each land pays 1 gold; neutrals gain +1.
 
-**Standing rule — gold is a table-talk currency.** Any player may give any
-amount of gold to any other player at any time, for any reason (bribes, tribute,
-war chests, apologies). Payments are real; promises never are. Gold already
-committed to an order this round is spent and cannot be gifted or reclaimed.
+**Deals are not a step.** The table is open from the moment the royal card turns
+until the orders begin resolving. Each house sets what it is **offering** and
+what it is **taking**; when everything offered matches everything taken across
+all houses, and every house involved has accepted, it all changes hands at once.
+Touching any term withdraws every acceptance, so nobody is ever holding an
+accept on terms they have not seen.
+
+Gold, land, titles and turncoat tokens move. Nothing anybody says they will
+*do* is part of a deal, and words bind nobody. Gold already committed to an
+order this round is spent and cannot be traded.
 
 ---
 
@@ -129,10 +139,13 @@ Resolved immediately on flip:
 
 | Card | Count | Effect |
 |---|---|---|
-| **Tax** | 5 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
+| **Tax** | 4 | Favorites pay 1, neutrals pay 2, outlaws pay 3 (Chancellor pays 1 less, min 0). Unpayable amounts: pay what you have. |
 | **Levy** | 4 | Each player pays 4 gold to the Crown or drops 1 fealty. |
-| **Favor** | 2 | The single highest-fealty player takes one land from the neutral pool. Tie: no effect. |
-| **Purge** | 1 | The single lowest-fealty player forfeits one land to the Crown. Tie: no effect. |
+| **Favor** | 4 | Every favorite is paid 2 gold. Those at +3 take a land from the neutral pool as well, if any remains. |
+
+**Optional — the levy falls on the outlaws.** With this rule on, a Levy does not
+ask an outlaw for coin: the Crown seizes their land instead, one at −2 and two
+at −3. They are not being taxed, they are being made an example of.
 
 One **Favor** is seeded into the first three flips so loyalty pays early and the
 table diverges fast.

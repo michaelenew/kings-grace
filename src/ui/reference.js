@@ -21,14 +21,15 @@ export function referenceCard(tuning, players) {
     el('h3', {}, 'Rules'),
 
     block('The round', [
-      el('p', { class: 'ref-line dim' }, 'Royal card → deals → sealed orders → whispers → reveal. For detail, mouse over the turn tracker above.'),
+      el('p', { class: 'ref-line dim' }, 'Royal card → sealed orders → whispers → reveal. Click any step in the turn tracker above for detail.'),
+      el('p', { class: 'ref-line dim' }, 'Deals are not a step. Strike one at any time until the orders resolve.'),
     ]),
 
     block('Standing', [
       el('p', { class: 'ref-line dim' }, 'Fealty runs −3 to +3. Appeal to climb; refuse a levy, strike a favorite, or raise a hand against the Crown to fall.'),
       line(`${BAND_LABEL.favorite} (+2, +3)`, 'Attacks gain +fealty against anyone lower — never against the Crown. A title at +2 and another at +3, once each, kept forever.'),
       line(`${BAND_LABEL.neutral} (−1 to +1)`, `+${tuning.neutralIncome} gold every income step. Nobody is watching your fields.`),
-      line(`${BAND_LABEL.outlaw} (−2, −3)`, 'Peek before the reveal, and take a turncoat token — spend it to change your sealed order, or sell it. Taxed hardest.'),
+      line(`${BAND_LABEL.outlaw} (−2, −3)`, 'Take a turncoat token as the round opens — sell it, or spend it at the whispers step to change your sealed order. Peek before the reveal. Taxed hardest.'),
     ]),
 
     block('Orders — one each round', [
@@ -49,8 +50,9 @@ export function referenceCard(tuning, players) {
 
     block('Titles', TITLES.map((t) => line(t.name, t.text))),
 
-    block('Table talk', [
-      el('p', { class: 'ref-line dim' }, 'Strike a deal at any time, with anyone, for any reason. Gold, land, titles and turncoat tokens change hands the moment everyone accepts. What anybody says they will *do* with them is words, and words bind nobody.'),
+    block('Deals', [
+      el('p', { class: 'ref-line dim' }, 'Set what you offer and what you take on your side of the table. Everything offered has to match everything taken across all houses. It settles the moment every house involved has accepted — and touching any term withdraws every acceptance.'),
+      el('p', { class: 'ref-line dim' }, 'Gold, land, titles and turncoat tokens move. Nothing anybody says they will *do* is part of it.'),
     ]),
   ]);
 }

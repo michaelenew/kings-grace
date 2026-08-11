@@ -34,28 +34,25 @@ export const CARD = {
   TAX: 'tax',
   LEVY: 'levy',
   FAVOR: 'favor',
-  PURGE: 'purge',
 };
 
 export const CARD_LABEL = {
   [CARD.TAX]: 'Tax',
   [CARD.LEVY]: 'Levy',
   [CARD.FAVOR]: 'Favor',
-  [CARD.PURGE]: 'Purge',
 };
 
 /** Card text for the tuning actually in play, not the numbers on the sheet. */
-export function cardText(card, tuning) {
+export function cardText(card, tuning, options = null) {
   const t = tuning;
   switch (card) {
     case CARD.TAX:
       return `Favorites pay ${t.taxByBand.favorite}, neutrals ${t.taxByBand.neutral}, outlaws ${t.taxByBand.outlaw}. Chancellor pays ${t.chancellorRelief} less (min 0).`;
     case CARD.LEVY:
-      return `Each player pays ${t.levyCost} gold to the Crown or drops 1 fealty.`;
+      return `Each player pays ${t.levyCost} gold to the Crown or drops 1 fealty.`
+        + (options?.levyTargetsOutlaws ? ' Outlaws instead forfeit land: one at −2, two at −3.' : '');
     case CARD.FAVOR:
-      return 'The single highest-fealty player takes one land from the neutral pool. Tie: no effect.';
-    case CARD.PURGE:
-      return 'The single lowest-fealty player forfeits one land to the Crown. Tie: no effect.';
+      return `Every favorite is paid ${t.favorGold} gold, and those at +${t.favorLandAt} take a land from the neutral pool as well.`;
     default:
       return '';
   }

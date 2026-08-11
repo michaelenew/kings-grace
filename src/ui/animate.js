@@ -11,10 +11,9 @@ import { CROWN } from '../engine/constants.js';
 const ORDER = { appeal: 0, develop: 1, support: 2, attack: 3 };
 
 const TIMING = {
-  land: 420, // the beat arrives
-  hold: 380, // and stays long enough to read
-  fade: 260, // then falls into the screen
-  gap: 90, // before the next one
+  land: 480, // the beat arrives
+  hold: 1100, // and stays long enough to read the whole table at once
+  fade: 420, // then falls into the screen
 };
 
 /** Sort beats into resolution order, keeping same-kind beats in engine order. */
@@ -43,11 +42,16 @@ function svgEl(tag, attrs = {}) {
   return node;
 }
 
-/** Shrink into the screen and fade. */
-async function fadeOut(node, origin = '50% 50%') {
-  node.style.transformOrigin = origin;
+/**
+ * Shrink into the screen and fade. `base` is whatever transform the element
+ * already needs to sit where it does — badges are centred with a translate, and
+ * dropping it here is what made them jerk to the corner and cut out.
+ */
+async function fadeOut(node, base = '') {
+  const from = `${base} scale(1)`.trim();
+  const to = `${base} scale(0.82)`.trim();
   const anim = node.animate(
-    [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.82)' }],
+    [{ opacity: 1, transform: from }, { opacity: 0, transform: to }],
     { duration: TIMING.fade, easing: 'ease-in', fill: 'forwards' },
   );
   await anim.finished.catch(() => {});
@@ -80,7 +84,7 @@ async function playSymbol(layer, at, kind, label, colour) {
   );
   await anim.finished.catch(() => {});
   await sleep(TIMING.hold);
-  await fadeOut(badge);
+  await fadeOut(badge, 'translate(-50%,-50%)');
 }
 
 /** A neutral line with a flat head, pushing coins along it. */
@@ -193,8 +197,7 @@ export async function playResolution(stage, beats, cancelled = () => false) {
         if (beat.kind === 'support') await playSupport(layer, from, to, beat.gold);
         else await playAttack(layer, from, to, beat.won);
       }
-      await sleep(TIMING.gap);
-    }
+        }
   } finally {
     layer.remove();
   }

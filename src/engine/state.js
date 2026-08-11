@@ -89,6 +89,7 @@ export function createGame(opts = {}) {
     pacts: {}, // pid -> pact honoured this round (diplomacy layer)
     goodwill: {}, // "from>to" -> number, gold gifted so far
     deals: [], // deals struck this game, for the chronicle
+    dealTable: { offers: {}, takes: {}, accepted: [] }, // the open pot
     beats: [], // structured record of this round's resolution, for animation
     log: [],
     winner: null, // {playerIds:[], how:'usurp'|'inherit'}
@@ -172,7 +173,7 @@ export function viewFor(state, pid) {
     deckStart: state.deckStart,
     crownStrength: crownStrength(state),
     lastCard: state.lastCard,
-    knownTopCard: state.revealed ? (state.deck[0] ?? null) : (known.topCard ?? null),
+    knownTopCard: known.topCard ?? null,
     neutralPool: state.neutralPool,
     crownLands: state.crownLands,
     // Orders are simultaneous, so the *size* of another player's commitment is
@@ -190,8 +191,7 @@ export function viewFor(state, pid) {
     me: pid,
     commitments: {},
     // Deals are private to the two houses that struck them.
-    pacts: Object.fromEntries(Object.entries(state.pacts)
-      .filter(([who, pact]) => who === pid || pact.with === pid)),
+    dealTable: JSON.parse(JSON.stringify(state.dealTable || { offers: {}, takes: {}, accepted: [] })),
     goodwill: { ...state.goodwill },
     winner: state.winner,
   };

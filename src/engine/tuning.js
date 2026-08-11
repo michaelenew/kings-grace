@@ -17,7 +17,7 @@ export const RULES = {
   neutralPerPlayer: 2,
   /** Most unspent turncoat tokens a player may hold at once. */
   turncoatMax: 2,
-  deck: { tax: 5, levy: 4, favor: 2, purge: 1 },
+  deck: { tax: 4, levy: 4, favor: 4 },
 
   // ---- The Crown ------------------------------------------------------
   // Crown strength = crownBase + crownPerPlayer x players + cards remaining.
@@ -28,8 +28,8 @@ export const RULES = {
   // fealty — and the Herald then wins every tie forever. At an offset of 8 the
   // Herald's holder won 1.76x their share of games against 1.41x at 6. The coup
   // is the only check on the heir.
-  crownBase: 2,
-  crownPerPlayer: 1,
+  crownBase: 6,
+  crownPerPlayer: 0,
   crownPerCard: 1,
 
   // ---- Combat ---------------------------------------------------------
@@ -45,7 +45,7 @@ export const RULES = {
    * conspiracy: no purse alone can outreach the crown, so the throne has to be
    * bought with somebody else's sword.
    */
-  commitCap: 7,
+  commitCap: 9,
 
   // ---- Income ---------------------------------------------------------
   landIncome: 1,
@@ -61,6 +61,9 @@ export const RULES = {
   taxByBand: { favorite: 1, neutral: 2, outlaw: 3 },
   chancellorRelief: 1,
   levyCost: 4,
+  /** Favor pays every favorite: this much gold at +2, and a land as well at +3. */
+  favorGold: 2,
+  favorLandAt: 3,
 
   // ---- Ransom module (optional) ---------------------------------------
   ransomTake: 2,

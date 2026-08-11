@@ -16,7 +16,8 @@ import { emptyGoods } from '../engine/deals.js';
 import { el, mount, number, select } from './dom.js';
 import { sequenceCard, stageFor } from './sequence.js';
 import { referenceCard } from './reference.js';
-import { blankDraft, dealBuilder, dealOffer } from './dealtable.js';
+import { dealOffer } from './dealtable.js';
+import { describe as describeGoods } from '../engine/dealtable.js';
 import { playResolution } from './animate.js';
 
 const root = document.getElementById('app');
@@ -30,6 +31,10 @@ const app = {
   lastSeatShown: null,
   humanSeats: new Set(),
   draft: {},
+  popover: null, // {title, text}
+  trayFor: null,
+  trayDraft: null,
+  trayNote: null,
   dealDraft: null,
   dealReply: null,
   hoveredStage: null,
@@ -80,7 +85,7 @@ function humanController(pid) {
 }
 
 function isPrivate(request) {
-  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'proposeDeal', 'deal'].includes(request.type);
+  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'deal'].includes(request.type);
 }
 
 function answer(value) {
@@ -183,6 +188,75 @@ function resume() {
 
 // ------------------------------------------------------------------- render
 
+/** A small explain-on-click panel. Hover titles were unreliable; a click is not. */
+export function openPopover(title, text) {
+  app.popover = { title, text };
+  render();
+}
+
+function trayEditor() {
+  if (!app.trayFor || !app.game) return null;
+  const s = app.game.state;
+  const pid = app.trayFor;
+  const me = s.players.find((p) => p.id === pid);
+  const table = s.dealTable;
+  const draft = app.trayDraft ??= {
+    offers: { ...emptyGoods(), ...(table.offers?.[pid] || {}) },
+    takes: { ...emptyGoods(), ...(table.takes?.[pid] || {}) },
+  };
+  const close = () => { app.trayFor = null; app.trayDraft = null; render(); };
+
+  const side = (label, key, limits) => el('div', { class: 'tray-side' }, [
+    el('h5', {}, label),
+    el('div', { class: 'goods' }, [
+      el('label', {}, [el('span', {}, 'gold'), number(draft[key].gold, 0, limits.gold, (v) => { draft[key].gold = v; render(); }, { class: 'narrow' })]),
+      el('label', {}, [el('span', {}, 'land'), number(draft[key].lands, 0, limits.lands, (v) => { draft[key].lands = v; render(); }, { class: 'narrow' })]),
+      el('label', {}, [el('span', {}, 'tokens'), number(draft[key].turncoat, 0, limits.turncoat, (v) => { draft[key].turncoat = v; render(); }, { class: 'narrow' })]),
+    ]),
+    el('div', { class: 'goods-titles' }, limits.titles.map((t) => el('button', {
+      class: `title-toggle${draft[key].titles.includes(t) ? ' on' : ''}`,
+      onclick: () => {
+        draft[key].titles = draft[key].titles.includes(t)
+          ? draft[key].titles.filter((x) => x !== t) : [...draft[key].titles, t];
+        render();
+      },
+    }, TITLE_BY_ID[t].name))),
+  ]);
+
+  const othersTitles = s.players.filter((p) => p.id !== pid).flatMap((p) => p.titles);
+  return el('div', { class: 'popover-backdrop', onclick: close }, [
+    el('div', { class: 'popover wide', onclick: (e) => e.stopPropagation() }, [
+      el('h4', {}, `${me.name} — your side of the table`),
+      el('p', {}, 'Everything offered has to match everything taken, across all houses. Changing anything withdraws every acceptance.'),
+      el('div', { class: 'tray-sides' }, [
+        side('You offer', 'offers', { gold: me.gold, lands: me.lands, turncoat: me.turncoat, titles: me.titles }),
+        side('You take', 'takes', { gold: 99, lands: 99, turncoat: 9, titles: [...new Set(othersTitles)] }),
+      ]),
+      el('div', { class: 'deal-actions' }, [
+        el('button', {
+          class: 'primary',
+          onclick: async () => { await app.game.setDealTerms(pid, draft); close(); },
+        }, 'Put it on the table'),
+        el('button', { class: 'ghost', onclick: close }, 'Cancel'),
+      ]),
+    ]),
+  ]);
+}
+
+function popoverView() {
+  if (!app.popover) return null;
+  return el('div', {
+    class: 'popover-backdrop',
+    onclick: () => { app.popover = null; render(); },
+  }, [
+    el('div', { class: 'popover', onclick: (e) => e.stopPropagation() }, [
+      el('h4', {}, app.popover.title),
+      el('p', {}, app.popover.text),
+      el('button', { class: 'ghost small', onclick: () => { app.popover = null; render(); } }, 'Close'),
+    ]),
+  ]);
+}
+
 function render() {
   if (!app.game) return mount(root, setupScreen());
   const s = app.game.state;
@@ -191,12 +265,14 @@ function render() {
     topBar(s),
     el('div', { class: 'layout' }, [
       el('div', { class: 'col-left' }, [
-        sequenceCard(s, app.hoveredStage, (id) => { app.hoveredStage = id; render(); }),
+        sequenceCard(s, (title, text) => openPopover(title, text)),
         referenceCard(s.tuning, s.players.length),
       ]),
       el('div', { class: 'col-mid' }, [tableView(s)]),
       el('div', { class: 'col-right' }, [stageView(s), chronicleView(s)]),
     ]),
+    popoverView(),
+    trayEditor(),
   );
   const log = root.querySelector('.chronicle-scroll');
   if (log) log.scrollTop = log.scrollHeight;
@@ -299,22 +375,10 @@ function advancedPanel() {
 // ---------------------------------------------------------------- chrome
 
 function topBar(s) {
-  const phaseLabel = {
-    crownFlip: 'Crown flip', commit: 'Sealed orders', peek: 'Whispers',
-    parley: 'Table talk', resolve: 'Reveal & resolve', income: 'Income', gameOver: 'The throne is settled',
-    setup: 'Setup',
-  }[s.phase] || s.phase;
   return el('header', { class: 'topbar' }, [
     el('div', { class: 'brand' }, [
       el('span', { class: 'brand-mark' }, '♛'),
       el('span', {}, 'The King’s Graces'),
-    ]),
-    el('div', { class: 'topbar-stats' }, [
-      stat('Round', `${s.round}`),
-      stat('Cards left', `${s.deck.length}`),
-      stat('Crown strength', `${crownStrength(s)}`),
-      stat('Unclaimed land', `${s.neutralPool}`),
-      stat('Phase', phaseLabel),
     ]),
     el('div', { class: 'topbar-actions' }, [
       el('button', {
@@ -322,19 +386,11 @@ function topBar(s) {
         title: 'Play each resolution out on the table, or settle it instantly',
         onclick: () => { app.settings.animate = !app.settings.animate; if (!app.settings.animate) app.animating = false; render(); },
       }, app.settings.animate ? 'Animation on' : 'Animation off'),
-      el('button', { class: 'ghost', onclick: () => showRules() }, 'Rules'),
+      el('button', { class: 'ghost', onclick: () => showRules() }, 'Full rules'),
       el('button', { class: 'ghost', onclick: () => { if (confirm('Abandon this game?')) { app.game = null; render(); } } }, 'New game'),
     ]),
   ]);
 }
-
-function stat(label, value) {
-  return el('div', { class: 'stat' }, [
-    el('span', { class: 'stat-label' }, label),
-    el('span', { class: 'stat-value' }, value),
-  ]);
-}
-
 // ------------------------------------------------------------------- board
 
 function tableView(s) {
@@ -342,17 +398,55 @@ function tableView(s) {
   const seats = s.players.map((p, i) => {
     // Seat one at the bottom (nearest the player) and go round from there.
     const angle = (Math.PI / 2) + (i * 2 * Math.PI) / n;
-    const x = 50 + 39 * Math.cos(angle);
-    const y = 50 + 35 * Math.sin(angle);
-    const card = playerCard(s, p);
-    card.classList.add('seated');
-    card.style.left = `${x}%`;
-    card.style.top = `${y}%`;
-    card.dataset.anchor = p.id;
-    return card;
+    const x = 50 + 41 * Math.cos(angle);
+    const y = 50 + 34 * Math.sin(angle);
+    const wrap = el('div', { class: 'seat', dataset: { anchor: p.id } }, [
+      playerCard(s, p),
+      dealTray(s, p),
+    ]);
+    wrap.style.left = `${x}%`;
+    wrap.style.top = `${y}%`;
+    return wrap;
   });
   return el('section', { class: `round-table seats-${n}` }, [...seats, centrePiece(s)]);
 }
+
+/**
+ * Each house's side of the open bargain, sitting next to their marker. Yours is
+ * editable; everyone else's is just visible, which is the point — a deal is a
+ * thing on the table, not a conversation you have to remember.
+ */
+function dealTray(s, p) {
+  const table = s.dealTable || { offers: {}, takes: {}, accepted: [] };
+  const offer = table.offers?.[p.id];
+  const take = table.takes?.[p.id];
+  const involved = !isEmptyGoods(offer) || !isEmptyGoods(take);
+  const mine = app.humanSeats.has(p.id);
+  const accepted = table.accepted?.includes(p.id);
+  if (!involved && !mine) return null;
+
+  return el('div', { class: `tray${involved ? ' active' : ''}${accepted ? ' accepted' : ''}` }, [
+    involved ? el('div', { class: 'tray-terms' }, [
+      el('span', { class: 'tray-line' }, [el('b', {}, 'offers '), describeGoods(offer || {})]),
+      el('span', { class: 'tray-line' }, [el('b', {}, 'takes '), describeGoods(take || {})]),
+    ]) : null,
+    mine ? el('div', { class: 'tray-actions' }, [
+      el('button', { class: 'ghost small', onclick: () => { app.trayFor = p.id; render(); } }, involved ? 'Change' : 'Offer a deal'),
+      involved ? el('button', {
+        class: `small${accepted ? ' primary' : ''}`,
+        onclick: async () => {
+          const res = await app.game.acceptDeal(p.id);
+          app.trayNote = res.settled ? 'Struck.' : (res.reason || `Waiting on ${(res.waiting || []).join(', ')}`);
+          await app.game.inviteBotAcceptance();
+          render();
+        },
+      }, accepted ? 'Accepted' : 'Accept') : null,
+      involved ? el('button', { class: 'ghost small', onclick: async () => { await app.game.withdrawFromDeal(p.id); render(); } }, 'Withdraw') : null,
+    ]) : accepted ? el('span', { class: 'tray-ok' }, 'accepted') : null,
+  ]);
+}
+
+const isEmptyGoods = (g) => !g || (!g.gold && !g.lands && !g.turncoat && !(g.titles || []).length);
 
 /** The middle of the table: the last decree, the Crown's strength, the titles. */
 function centrePiece(s) {
@@ -376,9 +470,9 @@ function centrePiece(s) {
       el('span', { class: 'crown-card-label' }, 'Titles'),
       el('div', { class: 'title-array' }, TITLES.map((t) => {
         const holder = held.get(t.id);
-        return el('div', {
+        return el('button', {
           class: `title-slot${holder ? ' taken' : ''}`,
-          title: `${t.name} — ${t.text}${holder ? ` (held by ${holder.name})` : ' (unclaimed)'}`,
+          onclick: () => openPopover(t.name, `${t.text} ${holder ? `Held by ${holder.name}.` : 'Unclaimed — granted at +2 and +3 fealty, or taken from a house whose walls were down.'}`),
         }, [
           el('span', { class: 'title-slot-name' }, t.name),
           el('span', { class: 'title-slot-holder' }, holder ? holder.name.split(' ')[0] : 'unclaimed'),
@@ -528,7 +622,6 @@ function requestPanel(s) {
   const me = s.players.find((p) => p.id === pid);
   const body = {
     order: () => orderForm(s, me, request, view),
-    proposeDeal: () => dealPanel(s, me, request),
     deal: () => dealOffer(s, request, answer),
     levy: () => levyForm(s, me, request),
     offer: () => offerForm(s, request),
@@ -549,7 +642,6 @@ function requestPanel(s) {
 function stageTitle(request) {
   return {
     order: 'seal an order',
-    proposeDeal: 'the deal table',
     deal: 'a bargain offered',
     levy: 'the levy',
     offer: 'a proposal',
@@ -800,43 +892,6 @@ function turncoatForm(s, request) {
     ]),
   ]);
 }
-// ------------------------------------------------------------- the deal table
-
-function dealPanel(s, me, request) {
-  if (!app.dealDraft) app.dealDraft = blankDraft(me.id, request.others);
-  const draft = app.dealDraft;
-  return dealBuilder(s, me.id, draft, {
-    onChange: () => render(),
-    reply: app.dealReply,
-    onPass: () => { app.dealDraft = null; app.dealReply = null; answer(null); },
-    onPropose: async () => {
-      const pending = app.pending;
-      const intent = draft.intent
-        ? { kind: draft.intent, of: draft.intentOf, subject: draft.intentSubject }
-        : null;
-      const deal = {
-        proposer: me.id,
-        transfers: draft.transfers.map((t) => ({ from: t.from, to: t.to, goods: { ...t.goods, titles: [...t.goods.titles] } })),
-        intent,
-      };
-      // Put it to the table without ending our own turn: a refusal should let
-      // us try again rather than cost us the round.
-      app.pending = null;
-      const result = await app.game.putDeal(deal);
-      if (result.accepted) {
-        app.dealDraft = null;
-        app.dealReply = null;
-        pending.resolve(null);
-        render();
-      } else {
-        app.pending = pending;
-        app.dealReply = { accepted: false, text: result.reason || 'They will not have it.' };
-        render();
-      }
-    },
-  });
-}
-
 // ---------------------------------------------------------------- chronicle
 
 function visibleEntry(entry) {

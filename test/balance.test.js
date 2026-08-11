@@ -116,12 +116,17 @@ test('every table size from three to six plays a whole game', async () => {
   }
 });
 
-// A bigger table can raise a bigger coalition, so the throne stands taller.
-test('the crown scales with the table', async () => {
+// The crown does not get *weaker* as the table grows — that was tried and it is
+// wrong. It is flat by default: a bigger table already supplies more houses who
+// might rally to the throne, so adding strength on top of that shut the coup
+// down entirely at five and six players. The per-player term is still a knob.
+test('the crown never weakens as the table grows', async () => {
   const strengths = [];
-  for (const players of [3, 4, 6]) {
+  for (const players of [3, 4, 5, 6]) {
     const { tuning } = await tournament({}, { n: 1, players });
     strengths.push(tuning.crownBase + tuning.crownPerPlayer * players);
   }
-  assert.ok(strengths[0] < strengths[1] && strengths[1] < strengths[2], `crown offsets ${strengths}`);
+  for (let i = 1; i < strengths.length; i++) {
+    assert.ok(strengths[i] >= strengths[i - 1], `crown offsets ${strengths}`);
+  }
 });
