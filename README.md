@@ -1,7 +1,7 @@
 # The King's Graces
 
 A playable web implementation of *The King's Graces* — a game of medieval noble
-politics for **2 to 6 players**. Serve the crown, grow fat, or vanish into
+politics for **3 to 6 players**. Serve the crown, grow fat, or vanish into
 outlawry, then take the throne before someone else inherits it.
 
 [RULES.md](RULES.md) is the ruleset in play, with an appendix of rulings and a
@@ -14,13 +14,13 @@ served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 61 rules, bot and balance tests
+npm test                   # 72 rules, bot and balance tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 
 ## Playing
 
-Choose a table of 2 to 6 and pick who sits in each seat — any mix of humans and
+Choose a table of 3 to 6 and pick who sits in each seat — any mix of humans and
 bots. One human against three bots is the default; all-human is hot seat, with a
 "pass the table" screen between private decisions; all-bot lets you watch.
 
@@ -28,15 +28,15 @@ Three things are worth knowing before your first game:
 
 - **Attacking drops your own walls to zero.** An army in the field cannot hold a
   gate, and a defender with no walls can have a *title* taken, not just a land.
-- **No order may carry more than 6 gold.** You cannot buy the throne out of your
+- **No order may carry more than 9 gold.** You cannot buy the throne out of your
   own purse. A usurpation needs somebody else's sword — and support aimed at an
   attacker counts toward *their* strength, so a bought sword crowns the buyer.
-- **Gold given away is really gone; everything else is words.** Each round opens
-  with table talk. Send gold to anyone, put a proposal to a bot — join my coup,
-  hit that one, reinforce me, leave me alone — and bots will put proposals to
-  you. A bot accepts when the bribe genuinely makes that its best line, and may
-  still walk away when orders are sealed. The treacherous personalities discount
-  a promise hardest once the gold is banked.
+- **Deals are not a step.** The table is open from the royal card until the
+  orders resolve. Each house sets what it is offering and what it is taking on
+  its own tray; it settles the moment everything offered matches everything
+  taken and every house involved has accepted. Touching any term withdraws every
+  acceptance. Gold, land, titles and turncoat tokens move — nothing anybody says
+  they will *do* is part of it.
 
 The setup screen exposes the constants, so you can play a variant without
 touching code.
@@ -61,21 +61,18 @@ coups a real gamble, nobody priced out of their own turn — and prints what eac
 configuration is failing at. `test/balance.test.js` asserts the shipped rules
 still hit those targets, so the claims below are checked rather than remembered.
 
-Where it lands, across 1,200 games per table size:
+Where it lands, across 600 games per table size:
 
-| Players | Ends in usurpation | Mean ending round (of 12) | Battles/game | Best–worst strategy |
-|---|---|---|---|---|
-| 2 | 33% | 11.3 | 6.0 | 28pt |
-| 3 | 66% | 10.9 | 7.9 | 20pt |
-| 4 | 69% | 10.3 | 9.6 | 13pt |
-| 5 | 62% | 10.1 | 10.9 | 6pt |
-| 6 | 47% | 10.5 | 12.0 | 6pt |
+| Players | Ends in usurpation | Mean ending round (of 12) | Battles/game |
+|---|---|---|---|
+| 3 | 38% | 11.8 | 4.7 |
+| 4 | 41% | 11.9 | 5.9 |
+| 5 | 42% | 12.0 | 7.2 |
+| 6 | 31% | 12.0 | 8.0 |
 
 Seat win rates sit within a couple of points of the 1/players baseline at every
-size. Doctrine spread is widest at small tables, where each seat's share is
-larger and the matchup is closer to rock-paper-scissors — two-handed play is the
-roughest configuration and honestly always will be, since a game about
-conspiracy has nobody to conspire with.
+size. Both roads to the throne stay open at every table size, which is the
+headline the constants were chosen for.
 
 ### What the measurements say, and what they cannot
 
@@ -119,8 +116,9 @@ None of these were visible by reading the code.
 in seat order when several players qualified at once, so the lowest seat took
 first pick — including the Herald, which then won every tie in the game. The
 bots' tie-break jitter was also keyed off seat number, which is a standing
-advantage rather than noise. Contested claims are now shuffled and the jitter is
-keyed off a per-game salt.
+advantage rather than noise. Contested claims are now settled by precedence at
+court — Herald, then standing, then land, then wealth, then a coin — and the
+jitter is keyed off a per-game salt.
 
 *Commitments were not simultaneous.* Gold is escrowed when an order is sealed,
 so anyone asked later in the round could read the table's war chests by watching
@@ -129,6 +127,10 @@ purses shrink. Other purses now look untouched until the reveal.
 *Bots petitioned at +3*, where it does nothing, and could commit a hopeless
 march on the Crown when no other order was affordable — the candidate list came
 back with exactly one entry.
+
+*Everyone could read the next royal card.* The peeked-card field fell back to
+the real top of the deck once orders were revealed, so an outlaw's peek leaked
+to the whole table every round.
 
 ### What the numbers do not cover
 
@@ -154,6 +156,9 @@ styles.css
 server.js           zero-dependency static server
 src/engine/         the rules; knows nothing about the DOM
   tuning.js         every number the game is made of
+  deals.js          one-shot bargains
+  dealtable.js      the open pot: offers, takes, acceptances
+  briefing.js       the board and the question, in prose, for an agent
   constants.js      names, titles, card text
   state.js          setup, deck construction, redacted per-player views
   game.js           the round loop, resolution, combat, victory
@@ -161,7 +166,8 @@ src/engine/         the rules; knows nothing about the DOM
   diplomacy.js      gifts, bribes and pacts
   rng.js            seeded PRNG, so any game can be replayed
 src/ui/             the browser client
-tools/              tournament core and the CLI over it
+tools/              tournament core, the CLI over it, the causal title test,
+                    and the agent harness
 test/               rules, bot and balance suites
 ```
 
