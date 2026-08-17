@@ -42,12 +42,17 @@ export const RULES = {
   // Crown strength = round(crownBase + crownPerPlayer x players + per-card x
   // cards remaining).
   //
-  // Do not raise the base far past this. A crown nobody can reach means the
-  // first player to +3 cannot be deposed — nothing in the game lowers a rival's
-  // fealty — and the Herald then wins every tie forever. At an offset of 8 the
-  // Herald's holder won 1.76x their share of games against 1.41x at 6. The coup
-  // is the only check on the heir.
-  crownBase: 7,
+  // The base is the floor the crown decays to as the deck empties — the
+  // strength of the throne on the last turn, when a coup is easiest. It was 7
+  // while a single order was capped at 9 gold; with the cap gone (see commitCap)
+  // a lone rich house could take the throne with a shrug, so the floor rose to
+  // 15. That is the "tame the threshold" number: high enough that a whim of a
+  // rally cannot topple a dominant house (usurpation sits near 50% at 15,
+  // against 58% at 13 and a coup-drowned 78% at the old 7), low enough that a
+  // real gold lead or a genuine coalition still takes the throne. It is
+  // delicate — a point of it swings usurpation several points — so measure
+  // before you move it.
+  crownBase: 15,
   /**
    * Negative, which reverses an earlier ruling that the crown must never weaken
    * as the table grows. That ruling was an instinct made before there was
@@ -68,12 +73,10 @@ export const RULES = {
   crownPerPlayer: -0.25,
   /**
    * 1.4, not 1, because the deck is ten cards rather than twelve. What this
-   * number really controls is how fast the coup window *opens*: the crown
-   * starts at 6 + 1.4 x 10 = 20 and decays to 6 as the deck runs out. On a
-   * short deck it has to decay faster to reach the same place, and the game is
-   * violently sensitive to it — at a flat crown of 6 + cards a ten-card game
-   * ends in usurpation 57% of the time, and one point of base takes that to
-   * 13%.
+   * number really controls is how fast the coup window *opens*: at four players
+   * the crown starts near 28 (15 − 1 + 1.4 × 10) and decays to 14 as the deck
+   * runs out. A short deck has to decay faster to cover the same span, and the
+   * game is violently sensitive to it — measure any change.
    */
   crownPerCard: 1.4,
 
@@ -85,6 +88,31 @@ export const RULES = {
   attackFealty: { favorite: -2, neutral: 0, outlaw: 1 },
   marshalBonus: 1,
   wardenBonus: 1,
+  /**
+   * Pledging fealty fortifies you. An Appeal or a pardon this round adds the
+   * gold it cost to your walls, for that round only — so a house that sees the
+   * blow coming can throw itself on the Crown's mercy and be sheltered by it.
+   * This is what stops a loyalist beating up a neutral or an outlaw for free:
+   * the target can pledge and the wall goes up.
+   */
+  pledgeWall: true,
+  /**
+   * And striking a house in the very act of pledging fealty is dishonourable:
+   * the attacker loses this much standing on top of the usual band consequence,
+   * win or lose. It is what removes the bounty for hunting a reforming outlaw.
+   */
+  pledgeStrikePenalty: 1,
+  /**
+   * A turncoat token in the attacker's hand at resolution cracks the gate,
+   * reducing the defender's base walls by this much (never below zero, and it
+   * does not touch the Warden, a pledge, or support). Two is enough to cancel
+   * the base wall. This is the token weaponised: hold the only one and you have
+   * a battering ram nobody else does; when the table is thick with outlaws and
+   * everyone holds one, walls stop mattering and being an outlaw stops being
+   * lonely. Holding it does this — spending it on a reseal (§2) does not, so it
+   * is one or the other.
+   */
+  turncoatWallBreak: 2,
   /**
    * Plunder: gold taken from the loser on top of the land or the title.
    *
@@ -107,11 +135,17 @@ export const RULES = {
    */
   repelSpoils: true,
   /**
-   * The most gold one order may carry. This is what makes a usurpation a
-   * conspiracy: no purse alone can outreach the crown, so the throne has to be
-   * bought with somebody else's sword.
+   * The most gold one order may carry, or null for no cap.
+   *
+   * Null, on purpose. A cap made the throne unwinnable for the house that had
+   * earned it: a player who had crushed the table could commit only 9 against a
+   * crown three defenders were piling support onto, and lost their own coup to
+   * the cap. A game you have dominated should not come down to whether the
+   * others rally on a whim. Uncapped, raw gold decides — a dominant house buys
+   * the throne, and a coalition still wins by rallying uncapped support behind a
+   * champion. The crown floor (crownBase) is what keeps that from being trivial.
    */
-  commitCap: 9,
+  commitCap: null,
 
   // ---- Income ---------------------------------------------------------
   landIncome: 1,

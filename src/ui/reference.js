@@ -14,7 +14,6 @@ function line(term, text) {
 }
 
 export function referenceCard(tuning, players) {
-  const cap = tuning.commitCap;
   const crown = tuning.crownBase + tuning.crownPerPlayer * players;
 
   return el('aside', { class: 'reference' }, [
@@ -33,8 +32,8 @@ export function referenceCard(tuning, players) {
     ]),
 
     block('Orders — one each round', [
-      line('Attack', `1–${cap ?? '∞'} gold. Your own walls drop to 0.`),
-      line('Support', `1–${cap ?? '∞'} gold, joining the target's attack if they strike, otherwise their defense.`),
+      line('Attack', 'As much gold as you hold. Your own walls drop to 0.'),
+      line('Support', 'As much gold as you hold, joining the target’s attack if they strike, otherwise their defense — or your own gate, to dig in.'),
       line('Appeal', `${tuning.petitionCost} gold for +1 fealty. As an outlaw it is a pardon: ${tuning.pardonCost} gold, straight to 0.`),
       line('Develop', `${tuning.developCost} gold for one land. Land pays ${tuning.landIncome} gold a round.`),
     ]),
@@ -48,8 +47,9 @@ export function referenceCard(tuning, players) {
     ]),
 
     block('Combat', [
-      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you attacked or answered the levy) + support + Warden. Attacker needs strictly more.`),
-      el('p', { class: 'ref-line dim' }, `Spoils: ${tuning.spoilsGold} gold plundered whatever happens, plus a land — or a title instead of the land, if their walls were down. A full purse is a reason to be attacked.`),
+      el('p', { class: 'ref-line dim' }, `Attack = gold + support + Marshal + punching-down bonus. Defense = walls ${tuning.walls} (0 if you attacked or answered the levy) + support + Warden + a fealty pledge. Attacker needs strictly more.`),
+      el('p', { class: 'ref-line dim' }, `An appeal or pardon this round adds the gold it cost to your walls, and striking a house pledging fealty docks the attacker ${tuning.pledgeStrikePenalty} standing. A turncoat token in the attacker’s hand cracks the gate by ${tuning.turncoatWallBreak}.`),
+      el('p', { class: 'ref-line dim' }, `Spoils: ${tuning.spoilsGold} gold plundered whatever happens, plus a land — or a title instead of the land, if their walls were down. Repelled, the attacker forfeits the same. A full purse is a reason to be attacked.`),
     ]),
 
     block('Winning', [

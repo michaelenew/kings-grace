@@ -707,17 +707,35 @@ export class Game {
     return str;
   }
 
-  defenseOf(pid, support) {
+  /**
+   * A defender's strength, broken into its parts. `attackerId`, when given,
+   * applies the token battering-ram: a coat in that attacker's hand cracks the
+   * base wall. Everything else — Warden, a fealty pledge, support — is proof
+   * against it.
+   */
+  defenseOf(pid, support = { toDefense: {} }, attackerId = null) {
     const s = this.state;
+    const t = s.tuning;
     const p = this.player(pid);
     const c = s.commitments[pid];
     // Two ways to have no walls: your army is out attacking, or it is out
     // serving the Crown's levy. The gate is open either way.
     const inTheField = !!(c && c.order === ORDER.ATTACK) || !!p.noArmy;
-    let def = inTheField ? 0 : s.tuning.walls;
-    def += support.toDefense[pid] || 0;
-    if (hasTitle(p, 'warden')) def += s.tuning.wardenBonus;
-    return { def, wallsDown: inTheField };
+    let baseWall = inTheField ? 0 : t.walls;
+    let ram = 0;
+    if (attackerId && baseWall > 0) {
+      const atk = this.player(attackerId);
+      if (atk && atk.turncoat > 0) {
+        ram = Math.min(baseWall, t.turncoatWallBreak || 0);
+        baseWall -= ram;
+      }
+    }
+    const warden = hasTitle(p, 'warden') ? t.wardenBonus : 0;
+    // A pledge of fealty this round fortifies you with what you pledged.
+    const pledge = (t.pledgeWall && c && c.order === ORDER.PETITION) ? c.gold : 0;
+    const sup = support.toDefense?.[pid] || 0;
+    const def = baseWall + warden + pledge + sup;
+    return { def, wallsDown: inTheField, base: baseWall, warden, pledge, support: sup, ram };
   }
 
   /** §5 — attacking the Crown. */
@@ -800,9 +818,10 @@ export class Game {
     }
 
     for (const [targetId, list] of byTarget) {
-      const { def, wallsDown } = this.defenseOf(targetId, support);
+      const base = this.defenseOf(targetId, support);
       const defender = this.player(targetId);
-      this.emit('combat', `${defender.name} defends with ${def}${wallsDown ? ' (walls down — their army is in the field)' : ''}.`);
+      const pledgeNote = base.pledge ? ` (${base.pledge} of it thrown on the Crown’s mercy)` : '';
+      this.emit('combat', `${defender.name} defends with ${base.def}${base.wallsDown ? ' (walls down — their army is in the field)' : ''}${pledgeNote}.`);
 
       // Descending attack strength; equal strength is settled by precedence at
       // court, so who strikes first is a fact about the table rather than a
@@ -813,8 +832,15 @@ export class Game {
 
       for (const a of list) {
         const attacker = this.player(a.attacker);
+        // The defence is worked out per attacker: a coat in this attacker's
+        // hand cracks the gate, but leaves everyone else's assault facing the
+        // full wall.
+        const d = this.defenseOf(targetId, support, a.attacker);
+        const def = d.def;
+        if (d.ram) this.emit('combat', `${attacker.name}’s turncoat token cracks ${defender.name}’s gate — walls fall ${d.ram}.`, { secret: true, pid: a.attacker });
         const heraldWinsTie = hasTitle(attacker, 'herald') && !hasTitle(defender, 'herald');
         const wins = a.strength > def || (a.strength === def && heraldWinsTie);
+        const wallsDown = base.wallsDown;
         s.beats.push({ kind: 'attack', actor: a.attacker, target: targetId, strength: a.strength, defense: def, won: wins });
         if (!wins) {
           this.emit('combat', `${attacker.name} strikes at ${defender.name} with ${a.strength} and is thrown back.`);
@@ -911,12 +937,18 @@ export class Game {
         }
         continue;
       }
-      const delta = s.tuning.attackFealty[bands[c.target]];
+      // Striking a house in the very act of pledging fealty is dishonourable,
+      // and the court docks you for it whatever their band and whether or not
+      // you break through — it is what takes the bounty off a reforming outlaw.
+      const targetPledged = s.commitments[c.target]?.order === ORDER.PETITION;
+      let delta = s.tuning.attackFealty[bands[c.target]];
+      if (targetPledged) delta -= (s.tuning.pledgeStrikePenalty || 0);
       if (delta === 0) continue;
       const before = p.fealty;
       p.fealty = clampFealty(p.fealty + delta);
       if (p.fealty === before) continue;
-      const why = delta < 0 ? `striking the Crown's favorite` : `hunting an outlaw`;
+      const why = targetPledged ? 'cutting down a house pledging fealty'
+        : delta < 0 ? "striking the Crown's favorite" : 'hunting an outlaw';
       this.emit('fealty', `${p.name} ${delta < 0 ? 'loses' : 'gains'} standing for ${why}: ${fmt(p.fealty)}.`);
     }
   }

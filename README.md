@@ -14,7 +14,7 @@ served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 99 rules, bot, trust and balance tests
+npm test                   # 101 rules, bot, trust and balance tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 
@@ -43,9 +43,11 @@ Three things are worth knowing before your first game:
 - **A title is not yours to keep.** A grant at +2 or +3 can be spent on one
   somebody already holds, for 2 gold to the Crown. The first house to the Herald
   does not get to sit on it.
-- **No order may carry more than 9 gold.** You cannot buy the throne out of your
-  own purse. A usurpation needs somebody else's sword — and support aimed at an
-  attacker counts toward *their* strength, so a bought sword crowns the buyer.
+- **Gold is uncapped.** A house that has genuinely crushed the table can spend
+  its way onto the throne — a game you dominated shouldn't turn on whether the
+  others rally on a whim. The crown stands tall (15 + cards remaining) so that
+  still takes a real gold lead or a real coalition. Support aimed at an attacker
+  counts toward *their* strength, so a bought sword crowns the buyer.
 - **Deals are not a step.** The table is open from the royal card until the
   orders resolve. Each house sets what it is offering and what it is taking on
   its own tray; it settles the moment everything offered matches everything
@@ -66,7 +68,7 @@ flavours — so a doctrine's win rate answers "is this line viable?".
 node tools/simulate.js -n 2000                 # four players, in detail
 node tools/simulate.js --counts                # every table size, side by side
 node tools/simulate.js --sweep crownBase=4,6,8
-node tools/simulate.js --search --grid 'commitCap=5|6|7,tax=3|4|5'
+node tools/simulate.js --search --grid 'crownBase=11|13|15,tax=3|4|5'
 node tools/title-value.js -n 600                # causal value of each title
 node tools/order-diary.js -n 300                # what each round looks like inside
 ```
@@ -77,14 +79,24 @@ coups a real gamble, nobody priced out of their own turn — and prints what eac
 configuration is failing at. `test/balance.test.js` asserts the shipped rules
 still hit those targets, so the claims below are checked rather than remembered.
 
-Where it lands, across 600 games per table size:
+Where it lands, across 300 games per table size (gold uncapped, crown floor 15):
 
 | Players | Usurp | Inherit | Coups tried/game | Coups landed | Battles/game | Doctrine spread |
 |---|---|---|---|---|---|---|
-| 3 | 53% | 48% | 1.36 | 39% | 5.6 | 22pt |
-| 4 | 47% | 53% | 1.57 | 30% | 7.4 | 20pt |
-| 5 | 39% | 61% | 1.65 | 24% | 8.8 | 21pt |
-| 6 | 39% | 61% | 1.82 | 21% | 10.0 | 20pt |
+| 3 | 52% | 48% | 0.80 | 66% | 4.8 | 33pt |
+| 4 | 47% | 53% | 0.97 | 48% | 6.3 | 36pt |
+| 5 | 52% | 48% | 1.16 | 45% | 7.0 | 28pt |
+| 6 | 52% | 48% | 1.25 | 42% | 8.2 | 23pt |
+
+Two things shifted when defence and the throne were reworked (see Appendix B),
+and they are worth naming rather than smoothing over. **Coups land far more
+often** — 42–66% of attempts against 20–40% before — because gold is uncapped:
+a coalition that commits, or a house with a real lead, now clears the crown
+instead of bouncing off a 9-gold ceiling. And **the doctrine spread widened**,
+because the same rework made raiding the weak expensive: the raider lane fell
+and the climber lane rose. Protecting the outlaw from being farmed for free and
+keeping every lane equally strong pull against each other; this is the current
+balance of that tension, not the end of it.
 
 Both roads stay open at every size and the balance between them holds together
 across the table, which took reversing a ruling. The mechanism is in the middle

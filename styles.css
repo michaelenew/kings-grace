@@ -557,3 +557,11 @@ button.title-slot { font: inherit; text-align: center; cursor: pointer; }
 .gold-chip.chosen { border-color: var(--gold); background: var(--gold); color: #1c150a; font-weight: 600; }
 .gold-chip.all { font-weight: 600; }
 .primary.big:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- walls resource + breakdown ------------------------------------------ */
+.resource.walls { border: 1px solid var(--line); background: transparent; cursor: pointer; }
+.resource.walls:hover { border-color: var(--gold); }
+.wall-parts { margin: 4px 0 8px; }
+.wall-part { display: flex; justify-content: space-between; margin: 2px 0; font-size: 0.85rem; }
+.wall-part.total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; font-weight: 600; }
+.wall-part b { font-variant-numeric: tabular-nums; }

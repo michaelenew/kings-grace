@@ -107,15 +107,22 @@ function positionScore(p, view, traits, doctrine = {}) {
 /** Clone of a player snapshot with a few fields changed. */
 const withChanges = (p, changes) => ({ ...p, titles: p.titles.slice(), ...changes });
 
-function estimateDefense(target, view) {
+function estimateDefense(target, view, ram = 0) {
+  const t = view.tuning || {};
   // Walls are usually up, but roughly a third of the table has its army out.
-  const walls = view.tuning?.walls ?? 2;
   // Unless we know it is: the levy resolves before orders are sealed, so a
-  // house that answered it is publicly undefended. The bots used to miss this
-  // entirely and went on estimating walls at a house with no gate, which is
-  // most of why the levy opened a window nobody climbed through.
-  let d = target.noArmy ? 0 : walls * 0.7;
-  if (has(target, 'warden')) d += view.tuning?.wardenBonus ?? 1;
+  // house that answered it is publicly undefended.
+  let wall = target.noArmy ? 0 : (t.walls ?? 2) * 0.7;
+  // A coat in my hand cracks the gate — so a house looks softer to a house that
+  // is holding a turncoat token.
+  if (ram && wall > 0) wall = Math.max(0, wall - ram);
+  let d = wall;
+  if (has(target, 'warden')) d += t.wardenBonus ?? 1;
+  // A house might throw itself on the Crown's mercy and be shielded (§2/§5),
+  // but only one that saw the blow coming actually will, which is rare. A small
+  // hedge, not a blanket assumption everyone fortifies — that made the bots too
+  // timid to raid at all.
+  if (t.pledgeWall && target.gold >= (t.petitionCost ?? 2)) d += 0.25;
   return d;
 }
 
@@ -220,6 +227,15 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       // A pardon is how the shadow cashes out; do not let the lane bias block it.
       const laneOver = view.deckCount <= 0.45 * (view.deckStart ?? 12);
       score += outlaw && laneOver ? Math.abs(pull(doctrine, 'petition')) : pull(doctrine, 'petition');
+      // Throw yourself on the Crown's mercy: if a spied order is coming for you,
+      // pledging fealty fortifies the wall by what it costs and docks whoever
+      // strikes. This is the counter to being beaten up for free — the reason a
+      // loyalist thinks twice before hunting a house that can see them coming.
+      if (t.pledgeWall) {
+        const incoming = Object.entries(view.commitments)
+          .some(([id, c]) => id !== me.id && c.order === ORDER.ATTACK && c.target === me.id);
+        if (incoming) score += cost + 3;
+      }
       candidates.push({ order: ORDER.PETITION, score, why: outlaw ? 'buy a pardon' : 'climb' });
     }
 
@@ -238,8 +254,9 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
       ? me.gold : Math.min(me.gold, t.commitCap);
 
     if (legal.includes(ORDER.ATTACK)) {
+      const ram = me.turncoat > 0 ? (t.turncoatWallBreak || 0) : 0;
       for (const target of others) {
-        const estDef = estimateDefense(target, view);
+        const estDef = estimateDefense(target, view, ram);
         const marshal = has(me, 'marshal') ? t.marshalBonus : 0;
         const punchDown = bandOf(me.fealty) === BAND.FAVORITE && target.fealty < me.fealty ? Math.round(me.fealty * t.punchDownScale) : 0;
         const need = Math.max(1, Math.ceil(estDef + 1 - marshal - punchDown));
@@ -584,13 +601,21 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
   function chooseTurncoat(request, view) {
     const me = view.players.find((p) => p.id === view.me);
     const mine = view.commitments[me.id];
-    // Somebody we peeked at is coming for us and we are in the field: pull back.
+    const t = view.tuning || {};
+    // Somebody we peeked at is coming for us.
     const incoming = Object.entries(view.commitments)
       .filter(([id, c]) => id !== me.id && c.order === ORDER.ATTACK && c.target === me.id);
-    if (incoming.length && mine?.order === ORDER.ATTACK && mine.target !== CROWN) {
-      return { action: 'change' };
+    if (incoming.length) {
+      // We are the one in the field: pull the sword back to hold the gate.
+      if (mine?.order === ORDER.ATTACK && mine.target !== CROWN) return { action: 'change' };
+      // Or throw ourselves on the Crown's mercy — a pledge shields us and docks
+      // the striker — if we can afford it and are not already pledging.
+      const cost = bandOf(me.fealty) === BAND.OUTLAW ? t.pardonCost : t.petitionCost;
+      const canPledge = t.pledgeWall && me.gold >= cost && bandOf(me.fealty) !== BAND.FAVORITE;
+      if (canPledge && mine?.order !== ORDER.PETITION) return { action: 'change' };
     }
-    // Otherwise hold the token. It is worth gold to somebody at the deal table.
+    // Otherwise hold the token: it is a battering ram in an attack, and worth
+    // gold to somebody at the deal table.
     return { action: 'none' };
   }
 

@@ -8,7 +8,7 @@ import {
   PERSONALITY_LABEL, TITLES, TITLE_BY_ID, bandOf, cardText,
 } from '../engine/constants.js';
 import { Game, describeOrder } from '../engine/game.js';
-import { createGame, crownStrength, commitCeiling } from '../engine/state.js';
+import { createGame, crownStrength, commitCeiling, wallsInfo } from '../engine/state.js';
 import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
 import { INTENTS, describeIntent } from '../engine/diplomacy.js';
@@ -56,7 +56,7 @@ const app = {
 const KNOBS = [
   { key: 'crownBase', label: 'Crown strength constant' },
   { key: 'crownPerPlayer', label: 'Crown strength per player', negative: true },
-  { key: 'commitCap', label: 'Most gold in one order', hint: 'Blank for no cap. A cap is what forces a usurpation to be a conspiracy.', nullable: true },
+  { key: 'commitCap', label: 'Most gold in one order', hint: 'Blank for no cap (the default). A cap makes a lone rich house unable to buy the throne.', nullable: true },
   { key: 'petitionCost', label: 'Petition cost' },
   { key: 'pardonCost', label: 'Pardon cost (outlaws)' },
   { key: 'developCost', label: 'Develop cost' },
@@ -534,6 +534,7 @@ function playerCard(s, p) {
     el('div', { class: 'resources' }, [
       resource('Lands', p.lands),
       resource('Gold', p.gold),
+      wallsResource(s, p),
     ]),
     statusRow(s, p),
     el('div', { class: 'titles' }, p.titles.length
@@ -618,6 +619,37 @@ function viewingSeat(s) {
   if (pending && app.humanSeats.has(pending)) return s.players.find((p) => p.id === pending);
   const first = [...app.humanSeats][0];
   return first ? s.players.find((p) => p.id === first) : null;
+}
+
+/**
+ * Walls as a standing figure on the card, clickable for the breakdown. The
+ * number is the *resting* wall — what it computes may not be what the attack
+ * meets, because standing, titles and a last-moment pledge can all move it, and
+ * a turncoat token in the attacker's hand cracks it. The popup says so.
+ */
+function wallsResource(s, p) {
+  const me = viewingSeat(s);
+  const knowOrder = s.revealed || (me && me.id === p.id);
+  const w = wallsInfo(s, p, { knowOrder });
+  const t = s.tuning;
+  return el('button', {
+    class: `resource walls${w.gone ? ' muted' : ''}`,
+    onclick: () => openPopover(`${p.name}: walls`, null, () => el('div', {}, [
+      el('div', { class: 'wall-parts' }, w.gone
+        ? [el('p', {}, w.gone === 'levy'
+          ? 'Their host answered the Crown’s levy, so they have no walls this round.'
+          : 'Their army is in the field, so they have no walls this round.')]
+        : w.parts.map((part) => el('p', { class: 'wall-part' }, [
+          el('span', {}, part.label), el('b', {}, part.value >= 0 ? `+${part.value}` : String(part.value)),
+        ])).concat([el('p', { class: 'wall-part total' }, [el('span', {}, 'Resting total'), el('b', {}, String(w.total))])])),
+      el('p', { class: 'blurb dim' }, 'It may not be this when the swords land. Walls drop to 0 the round a house attacks or answers a levy. '
+        + `A turncoat token in the attacker’s hand cracks the gate by ${t.turncoatWallBreak}. `
+        + 'An appeal or pardon this round adds the gold it costs. Support and the Warden add on top, and are hidden until the reveal.'),
+    ])),
+  }, [
+    el('span', { class: 'resource-value' }, String(w.total)),
+    el('span', { class: 'resource-label' }, 'Walls'),
+  ]);
 }
 
 function resource(label, value, cls = '') {
@@ -852,19 +884,30 @@ function orderForm(s, me, request, view) {
       el('span', {}, t.commitCap && me.gold > ceiling
         ? `How much gold? (you hold ${me.gold}; no order may carry more than ${t.commitCap})`
         : `How much gold? (you hold ${me.gold})`),
-      // Explicit amounts, nothing pre-selected. With the commit cap the ceiling
-      // is small enough to lay out as chips, which is unambiguous in a way a
-      // slider resting on a default never was.
-      el('div', { class: 'gold-chips' }, [
-        ...Array.from({ length: Math.max(1, ceiling) }, (_, i) => i + 1).map((n) => el('button', {
-          class: `gold-chip${d.gold === n ? ' chosen' : ''}`,
-          onclick: () => { d.gold = n; render(); },
-        }, String(n))),
-        ceiling > 1 ? el('button', {
-          class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`,
-          onclick: () => { d.gold = ceiling; render(); },
-        }, 'All in') : null,
-      ]),
+      // Nothing pre-selected: the slider label reads "choose" and the Seal
+      // button stays disabled until a value is set. Small purses get chips;
+      // large ones (gold is uncapped) get a slider with quick-set buttons.
+      ceiling <= 10
+        ? el('div', { class: 'gold-chips' }, [
+          ...Array.from({ length: Math.max(1, ceiling) }, (_, i) => i + 1).map((n) => el('button', {
+            class: `gold-chip${d.gold === n ? ' chosen' : ''}`,
+            onclick: () => { d.gold = n; render(); },
+          }, String(n))),
+          ceiling > 1 ? el('button', {
+            class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`,
+            onclick: () => { d.gold = ceiling; render(); },
+          }, 'All in') : null,
+        ])
+        : el('div', { class: 'gold-row' }, [
+          el('input', {
+            type: 'range', min: 1, max: ceiling, value: String(d.gold ?? 1),
+            oninput: (e) => { d.gold = Number(e.target.value); render(); },
+          }),
+          el('span', { class: 'gold-value' }, d.gold >= 1 ? String(d.gold) : 'choose'),
+          el('button', { class: `gold-chip${d.gold === 1 ? ' chosen' : ''}`, onclick: () => { d.gold = 1; render(); } }, '1'),
+          el('button', { class: `gold-chip${d.gold === Math.ceil(ceiling / 2) ? ' chosen' : ''}`, onclick: () => { d.gold = Math.ceil(ceiling / 2); render(); } }, 'Half'),
+          el('button', { class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`, onclick: () => { d.gold = ceiling; render(); } }, 'All in'),
+        ]),
     ]) : null,
     needsGold && d.target === CROWN ? el('p', { class: 'warn' }, `The Crown defends with ${crownStrength(s)} plus any support. Raising a hand against it sets your fealty to −3 either way.`) : null,
     needsGold && d.gold >= 1 && d.target && d.target !== CROWN && d.order === ORDER.ATTACK ? attackPreview(s, me, d) : null,
@@ -920,10 +963,19 @@ function attackPreview(s, me, d) {
   const warden = target.titles.includes('warden') ? t.wardenBonus : 0;
   const delta = s.tuning.attackFealty[bandOf(target.fealty)];
   const consequence = delta === 0 ? 'no fealty change' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)} fealty`;
+  // The walls I would actually meet: base (0 if their host is away), Warden,
+  // and my own token cracking the gate. Their support and any last-moment
+  // pledge are hidden.
+  const ram = me.turncoat > 0 ? Math.min(t.walls, t.turncoatWallBreak) : 0;
+  const base = target.noArmy ? 0 : Math.max(0, t.walls - ram);
+  const known = base + warden;
   return el('div', { class: 'preview' }, [
     el('p', {}, `Your strength: ${strength} (${d.gold || 1} gold${marshal ? ' + 1 Marshal' : ''}${punch ? ` + ${punch} punching down` : ''}).`),
-    el('p', {}, `Their walls: ${t.walls}${warden ? ` + ${warden} Warden` : ''} — unless they attack too, in which case 0. Support on either side is hidden.`),
-    el('p', {}, `If you break through you plunder ${Math.min(t.spoilsGold, target.gold)} gold from them as well as taking a land.`),
+    el('p', {}, target.noArmy
+      ? `Their walls: 0 — their host answered the levy${warden ? `, though the Warden still adds ${warden}` : ''}. They defend with ${known} plus any support, and their titles are exposed.`
+      : `Their walls: ${t.walls}${ram ? ` − ${ram} (your turncoat token cracks the gate)` : ''}${warden ? ` + ${warden} Warden` : ''} = ${known}, unless they attack too, in which case 0.`),
+    el('p', { class: 'warn' }, 'Support is hidden — and so is a last-moment pledge: throw the target on the Crown’s mercy and their walls rise by what they pledge, and you are docked 1 fealty for cutting down a house pledging fealty.'),
+    el('p', {}, `Break through and you plunder ${Math.min(t.spoilsGold, target.gold)} gold${target.lands ? ' and take a land' : ''}${target.noArmy && target.titles.length ? ' or a title' : ''}.${t.repelSpoils ? ' Get thrown back and they take the same off you.' : ''}`),
     el('p', {}, `Striking a ${BAND_LABEL[bandOf(target.fealty)].toLowerCase()} costs you ${consequence}.`),
   ]);
 }
@@ -1105,7 +1157,7 @@ function showRules() {
   const dialog = document.getElementById('rules-dialog');
   const t = app.game ? app.game.state.tuning : resolveTuning(activeTuning());
   const capLine = t.commitCap
-    ? `No single order may carry more than ${t.commitCap} gold, so no one purse can buy the throne alone.`
+    ? `No single order may carry more than ${t.commitCap} gold.`
     : 'A single order may carry any amount of gold you hold.';
   {
     mount(dialog, el('div', { class: 'rules-body' }, [

@@ -145,6 +145,32 @@ export function crownStrength(state) {
   return Math.round(t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * state.deck.length);
 }
 
+/**
+ * A player's walls right now, broken into parts, for display. `knowOrder` says
+ * whether the viewer is entitled to know this player's sealed order — false for
+ * a rival before the reveal, true for your own seat or after it — so a hidden
+ * attack does not leak through the walls readout.
+ *
+ * It reports the *resting* wall; the note explains what can move it before the
+ * swords land, because standing, titles and a last-moment pledge all can.
+ */
+export function wallsInfo(state, player, { knowOrder = false } = {}) {
+  const t = state.tuning;
+  const c = knowOrder ? state.commitments[player.id] : null;
+  if (player.noArmy) {
+    return { total: 0, gone: 'levy', parts: [{ label: 'Host answered the levy', value: 0 }] };
+  }
+  if (c && c.order === ORDER.ATTACK) {
+    return { total: 0, gone: 'attack', parts: [{ label: 'Army in the field', value: 0 }] };
+  }
+  const parts = [{ label: 'Base walls', value: t.walls }];
+  let total = t.walls;
+  if (hasTitle(player, 'warden')) { parts.push({ label: 'Warden', value: t.wardenBonus }); total += t.wardenBonus; }
+  const pledge = (t.pledgeWall && c && c.order === ORDER.PETITION) ? c.gold : 0;
+  if (pledge) { parts.push({ label: 'Fealty pledge this round', value: pledge }); total += pledge; }
+  return { total, gone: null, parts };
+}
+
 /** The most gold a single order may carry (§3's cap, off by default). */
 export function commitCeiling(state, player) {
   const cap = state.tuning.commitCap;

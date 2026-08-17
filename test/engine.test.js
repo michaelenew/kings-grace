@@ -7,6 +7,10 @@ import { RULES, deckSize, neutralPoolFor } from '../src/engine/tuning.js';
 import { makeRng } from '../src/engine/rng.js';
 import { brokeThrough, fillOrders, get, makeGame, set } from './_helpers.js';
 
+// A do-nothing order that keeps the defender's plain walls, for combat tests
+// that predate the fealty-pledge shield and are not about it.
+const PEACE = { order: ORDER.SUPPORT, target: CROWN, gold: 1 };
+
 // ---------------------------------------------------------------- setup (§1)
 
 test('setup deals what the rules say', () => {
@@ -286,7 +290,7 @@ test('strictly greater takes a land', async () => {
   const g = makeGame();
   fillOrders(g, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 3 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -319,7 +323,7 @@ test('Marshal adds to attack and Warden adds to defense', async () => {
   set(g.state, 'p1', { titles: ['warden'] });
   fillOrders(g, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 3 }, // 3 + 1 = 4 vs 2 + 1 = 3
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -333,7 +337,7 @@ test('a favorite punches down but not sideways or up', async () => {
   set(down.state, 'p0', { fealty: 3, titleGrants: { 2: true, 3: true } });
   fillOrders(down, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -346,7 +350,7 @@ test('a favorite punches down but not sideways or up', async () => {
   set(level.state, 'p1', { fealty: 3, titleGrants: { 2: true, 3: true } });
   fillOrders(level, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -358,7 +362,7 @@ test('support goes to the target\'s attack when they attack, else to their defen
   const attackSide = makeGame();
   fillOrders(attackSide, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.SUPPORT, target: 'p0', gold: 2 }, // 1 + 2 = 3 > 2
     p3: { order: ORDER.PETITION },
   });
@@ -368,7 +372,7 @@ test('support goes to the target\'s attack when they attack, else to their defen
   const defenseSide = makeGame();
   fillOrders(defenseSide, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 4 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.SUPPORT, target: 'p1', gold: 2 }, // defense 2 + 2 = 4, ties hold
     p3: { order: ORDER.PETITION },
   });
@@ -381,7 +385,7 @@ test('Herald wins ties it is party to, attacking or defending', async () => {
   set(attacking.state, 'p0', { titles: ['herald'] });
   fillOrders(attacking, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -392,7 +396,7 @@ test('Herald wins ties it is party to, attacking or defending', async () => {
   set(defending.state, 'p1', { titles: ['herald'] });
   fillOrders(defending, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 2 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
@@ -405,7 +409,7 @@ test('several attacks hit the same defense and each takes its own spoils', async
   set(g.state, 'p1', { gold: 10 });
   set(g.state, 'p2', { gold: 10 });
   fillOrders(g, {
-    p0: { order: ORDER.PETITION },
+    p0: PEACE,
     p1: { order: ORDER.ATTACK, target: 'p0', gold: 3 },
     p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
     p3: { order: ORDER.PETITION },
@@ -425,7 +429,7 @@ test('attacking a favorite costs 2 fealty, an outlaw pays 1', async () => {
   set(g.state, 'p2', { gold: 8 });
   fillOrders(g, {
     p0: { order: ORDER.ATTACK, target: 'p1', gold: 1 },
-    p1: { order: ORDER.PETITION },
+    p1: PEACE,
     p2: { order: ORDER.ATTACK, target: 'p3', gold: 1 },
     p3: { order: ORDER.DEVELOP },
   });
@@ -445,8 +449,40 @@ test('a pardon lands before the swords do, so the raider gets no bounty', async 
   });
   await g.resolvePhase();
   assert.equal(get(g.state, 'p1').fealty, 0);
-  assert.equal(get(g.state, 'p0').fealty, 0, 'p1 was neutral when the attack resolved');
+  assert.equal(get(g.state, 'p0').fealty, -1, 'no bounty — and docked for cutting down a house pledging fealty');
 });
+
+test('a fealty pledge fortifies the walls it costs, for that round', async () => {
+  const g = makeGame();
+  const t = g.state.tuning;
+  set(g.state, 'p1', { fealty: 0, gold: 6 });
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p1', gold: t.walls + 1 }, // would beat bare walls
+    p1: { order: ORDER.PETITION },                                 // but pledges fealty
+    p2: PEACE,
+    p3: PEACE,
+  });
+  assert.equal(g.defenseOf('p1', { toDefense: {} }).pledge, t.petitionCost);
+  await g.resolvePhase();
+  assert.ok(!brokeThrough(g.state, 'p0', 'p1'), 'the pledge held the gate');
+});
+
+test('a turncoat token in the attacker\'s hand cracks the base wall, and only that', () => {
+  const g = makeGame();
+  const t = g.state.tuning;
+  set(g.state, 'p0', { turncoat: 1 }); // the ram
+  set(g.state, 'p2', { turncoat: 0 }); // no ram
+  set(g.state, 'p1', { titles: ['warden'] });
+  g.commit('p1', { order: ORDER.PETITION }); // Warden + a pledge on top of base walls
+  const rammed = g.defenseOf('p1', { toDefense: {} }, 'p0');
+  const whole = g.defenseOf('p1', { toDefense: {} }, 'p2');
+  assert.equal(rammed.ram, Math.min(t.walls, t.turncoatWallBreak));
+  assert.equal(rammed.base, Math.max(0, t.walls - t.turncoatWallBreak), 'the gate falls');
+  assert.equal(rammed.warden, whole.warden, 'the Warden is spared');
+  assert.equal(rammed.pledge, whole.pledge, 'and so is the pledge');
+  assert.equal(whole.ram, 0, 'a house with no token is no battering ram');
+});
+
 
 test('petitioning to +2 grants a title in time to use it that same round', async () => {
   const g = makeGame({ controllers: { p0: { title: 'marshal' } } });
@@ -914,7 +950,7 @@ test('equal attacks land in order of standing, then land, then wealth', async ()
   set(g.state, 'p2', { gold: 10, fealty: 0, lands: 5 }); // most land of the rest
   set(g.state, 'p3', { gold: 10, fealty: 0, lands: 3 }); // last in line
   fillOrders(g, {
-    p0: { order: ORDER.PETITION },
+    p0: PEACE,
     p1: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
     p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
     p3: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
@@ -933,7 +969,7 @@ test('the Herald goes first regardless of standing', async () => {
   set(g.state, 'p1', { gold: 10, fealty: 1, lands: 5 });
   set(g.state, 'p2', { gold: 10, fealty: -1, lands: 1, titles: ['herald'] });
   fillOrders(g, {
-    p0: { order: ORDER.PETITION },
+    p0: PEACE,
     p1: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
     p2: { order: ORDER.ATTACK, target: 'p0', gold: 4 },
     p3: { order: ORDER.PETITION },

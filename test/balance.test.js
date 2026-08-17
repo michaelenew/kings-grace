@@ -27,10 +27,13 @@ test('both roads to the throne stay live at four players', async () => {
   assert.ok(summary.inherit > 20, `inheritance should stay reachable, saw ${summary.inherit.toFixed(0)}%`);
 });
 
+// The deck is 10 cards. Games mostly run to the back half; they end a little
+// before the last card now that gold is uncapped and a coup can be forced
+// earlier — which is the point, so the floor is "most of the deck", not "all".
 test('the game uses most of its crown deck', async () => {
   const { summary } = await at(4);
-  assert.ok(summary.meanRound > 9.5, `mean ending round ${summary.meanRound.toFixed(1)}, wanted past 9.5 of 12`);
-  assert.ok(summary.meanRound <= 12, `mean ending round ${summary.meanRound.toFixed(1)} exceeds the deck`);
+  assert.ok(summary.meanRound > 8.5, `mean ending round ${summary.meanRound.toFixed(1)}, wanted past 8.5 of 10`);
+  assert.ok(summary.meanRound <= 10, `mean ending round ${summary.meanRound.toFixed(1)} exceeds the deck`);
 });
 
 // KNOWN GAP — these bounds are far looser than they should be, and they are

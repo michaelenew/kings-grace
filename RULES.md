@@ -26,8 +26,8 @@ is in Appendix B.
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **round(7 − 0.25 × players + 1.4 × cards
-remaining)** — at four players, 20 down to 6 as the deck empties.
+**Crown strength** at any moment = **round(15 − 0.25 × players + 1.4 × cards
+remaining)** — at four players, 28 down to 14 as the deck empties.
 
 The per-player term is negative, which **reverses** an earlier ruling in this
 document that the crown must never weaken as the table grows. That ruling was an
@@ -104,14 +104,18 @@ order this round is spent and cannot be traded.
 
 Each player picks exactly one per round:
 
-- **Attack [target]** — commit **1 to 9 gold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
-- **Support [target]** — commit **1 to 9 gold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies. **The target may be yourself**: digging in puts the gold on your own walls, and because orders are sealed nobody can see that you did it.
+- **Attack [target]** — commit **as much gold as you hold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
+- **Support [target]** — commit **as much gold as you hold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies. **The target may be yourself**: digging in puts the gold on your own walls, and because orders are sealed nobody can see that you did it.
 - **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
-**No order may carry more than 9 gold.** This is the rule that makes a
-usurpation a conspiracy: no purse alone outreaches the crown, so the throne has
-to be bought with somebody else's sword.
+**There is no cap on what an order may carry.** Gold is uncapped, so a house
+that has genuinely crushed the table can spend its way to the throne — a game
+you have dominated should not come down to whether the others rally on a whim.
+The counterweight is that the crown stands tall (15 + cards), so taking it still
+needs a real gold lead or a real coalition, not a passing impulse. A coalition
+wins the same way it always did: by rallying uncapped support behind one
+champion, whose contribution is the one that counts.
 
 ### Fealty consequences of attacking (by the target's band at resolution)
 
@@ -128,9 +132,11 @@ to be bought with somebody else's sword.
 
 **Attack strength** = gold committed + Support gold aimed at the attacker + favorite punching-down bonus (§2) + Marshal.
 
-**Defense** = walls + Support gold aimed at the defender + Warden.
+**Defense** = walls + Support gold aimed at the defender + Warden + a fealty pledge.
 
 - **Walls = 2**, but **walls = 0 if the defender has no army at home**: either they committed an Attack this round, or they answered the Crown's levy (§6). Their host is in the field either way.
+- **A fealty pledge fortifies you.** An Appeal or a pardon this round adds the gold it cost to your walls, for that round only — throw yourself on the Crown's mercy and be sheltered by it. And **striking a house in the act of pledging costs the attacker 1 fealty**, whatever the target's band and whether or not the blow lands, which takes the bounty off hunting a reforming outlaw. This is what stops a loyalist beating up a neutral or an outlaw for free: they can pledge, and if they spied the blow coming (§2) they can pledge at the last moment.
+- **A turncoat token in the attacker's hand cracks the gate**, reducing the defender's base walls by 2 (never below zero; the Warden, a pledge and support are proof against it). Holding the token does this — spending it on a reseal (§2) does not, so it is one or the other. Hold the only token at the table and you have a battering ram nobody else does; when the table is thick with outlaws all holding one, walls stop mattering and being an outlaw stops being lonely.
 
 Attacker wins on **strictly greater**. Ties favor the defender (Herald breaks ties in its holder's favor, §7).
 
@@ -549,3 +555,35 @@ order but attack-or-support. Making the swords come out by pricing people out of
 everything else is not the same as making the game want a fight. The honest fix
 is a sink that stays open in the back half — the land runs out at round 8 and
 nothing replaces it — rather than a tax squeeze.
+
+
+### Defence, the token, and the throne (this pass)
+
+Three interlocking changes made defence a real decision and the throne winnable
+by a house that earned it.
+
+**A pledge of fealty shields you, and striking a pledger is dishonourable.** The
+midgame problem was that a neutral or an outlaw was free money for anyone on the
+loyalist track: you took as much land as by developing, and hunting an outlaw
+*paid* standing. Now an appeal or pardon adds its gold to your walls that round,
+and cutting down a house in the act of pledging docks the attacker a fealty
+whatever the band. The counter that makes it sing: an outlaw who spies the blow
+coming (§2) can pledge at the last moment — so beating one up is no longer safe.
+
+**The turncoat token is a battering ram.** Held in an attacker's hand at
+resolution it cracks the base wall. That gives the sole token-holder real
+leverage and makes a table thick with outlaws a table where walls, and the risk
+of being an outlaw, both matter less — the same mechanic diluting itself.
+
+**Gold is uncapped, and the crown floor rose to 15.** The commit cap let a lone
+dominant house lose its own coup to arithmetic — capped at 9 against three
+defenders piling on support. Uncapped, a house that has crushed the table can
+buy the throne, and a coalition still wins by rallying uncapped support behind
+one champion. The tall crown is what stops that being a whim: near 28 early,
+14 at the death.
+
+The honest cost, measured: raiding the weak got expensive, so the raider lane
+fell and the climber lane rose, widening the doctrine spread; and coups land far
+more often now that gold decides them. Both are the intended tensions doing their
+work, and both are dials — `pledgeStrikePenalty`, `turncoatWallBreak`,
+`crownBase` — if the balance wants a nudge.
