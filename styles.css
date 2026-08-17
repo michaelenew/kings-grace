@@ -545,3 +545,15 @@ button.title-slot { font: inherit; text-align: center; cursor: pointer; }
 }
 .peek-find h4 { margin: 0 0 4px; color: var(--gold); }
 .peek-find p { margin: 0; font-size: 0.82rem; color: var(--ink-dim); }
+
+/* ---- order form: explicit gold, nothing pre-chosen ----------------------- */
+.gold-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.gold-chip {
+  min-width: 30px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.gold-chip:hover { border-color: var(--gold); }
+.gold-chip.chosen { border-color: var(--gold); background: var(--gold); color: #1c150a; font-weight: 600; }
+.gold-chip.all { font-weight: 600; }
+.primary.big:disabled { opacity: 0.45; cursor: not-allowed; }

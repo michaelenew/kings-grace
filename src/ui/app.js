@@ -102,16 +102,12 @@ function answer(value) {
   render();
 }
 
-function defaultDraft(request, view, pid) {
+function defaultDraft(request) {
   if (request.type !== 'order') return {};
-  const me = view.players.find((x) => x.id === pid);
-  const first = request.legal[0];
-  const others = view.players.filter((x) => x.id !== pid);
-  return {
-    order: first,
-    target: others[0]?.id ?? CROWN,
-    gold: Math.min(1, me.gold),
-  };
+  // Nothing is pre-chosen. An order is not sealable until the player has made
+  // every decision it needs — no silent default to attack the first seat with
+  // one gold because a field was left untouched.
+  return { order: null, target: null, gold: null };
 }
 
 // ---------------------------------------------------------------- new game
@@ -806,6 +802,14 @@ function orderForm(s, me, request, view) {
     [ORDER.HOLD]: 'You cannot afford anything else.',
   }[d.order];
 
+  // What is still unchosen. The order cannot be sealed until this is empty, so
+  // nothing goes out on a forgotten default.
+  const missing = [];
+  if (!d.order) missing.push('an order');
+  if (needsTarget && !d.target) missing.push('a target');
+  if (needsGold && !(d.gold >= 1)) missing.push('how much gold');
+  const ready = missing.length === 0;
+
   return el('div', { class: 'form' }, [
     el('div', { class: 'order-grid' }, orderChoices(s, me, request).map(({ order: o, ok, why }) => el('button', {
       class: `order-btn${d.order === o ? ' chosen' : ''}${ok ? '' : ' locked'}`,
@@ -813,9 +817,11 @@ function orderForm(s, me, request, view) {
       title: ok ? null : why,
       onclick: () => {
         if (!ok) return;
+        // Switching orders clears the other fields, so a target picked for an
+        // attack cannot linger into a support you retargeted.
         d.order = o;
-        if (o === ORDER.PETITION || o === ORDER.DEVELOP) d.gold = 0;
-        else d.gold = Math.max(1, Math.min(d.gold || 1, ceiling));
+        d.target = null;
+        d.gold = null;
         render();
       },
     }, [
@@ -830,36 +836,47 @@ function orderForm(s, me, request, view) {
         ? el('p', { class: 'locked-note' }, locked.map((c) => `${ORDER_LABEL[c.order]}: ${c.why}`).join(' · '))
         : null;
     })(),
-    el('p', { class: 'blurb' }, blurb),
+    el('p', { class: 'blurb' }, d.order ? blurb : 'Choose an order to begin.'),
     needsTarget ? el('label', { class: 'field' }, [
       el('span', {}, 'Target'),
       select(
-        [...(d.order === ORDER.SUPPORT ? [{ value: me.id, label: 'Your own gate (dig in)' }] : []),
+        [{ value: '', label: '— choose a target —' },
+          ...(d.order === ORDER.SUPPORT ? [{ value: me.id, label: 'Your own gate (dig in)' }] : []),
           ...others.map((p) => ({ value: p.id, label: `${p.name} (${BAND_LABEL[bandOf(p.fealty)]}, ${p.lands} lands)` })),
           { value: CROWN, label: `The Crown (strength ${crownStrength(s)})` }],
-        d.target,
-        (v) => { d.target = v; render(); },
+        d.target ?? '',
+        (v) => { d.target = v || null; render(); },
       ),
     ]) : null,
     needsGold ? el('label', { class: 'field' }, [
       el('span', {}, t.commitCap && me.gold > ceiling
-        ? `Gold committed (you hold ${me.gold}; no order may carry more than ${t.commitCap})`
-        : `Gold committed (you hold ${me.gold})`),
-      el('div', { class: 'gold-row' }, [
-        el('input', {
-          type: 'range', min: 1, max: Math.max(1, ceiling), value: Math.min(d.gold || 1, ceiling),
-          oninput: (e) => { d.gold = Number(e.target.value); render(); },
-        }),
-        el('span', { class: 'gold-value' }, String(Math.min(d.gold || 1, ceiling))),
-        el('button', { class: 'ghost small', onclick: () => { d.gold = ceiling; render(); } }, 'All in'),
+        ? `How much gold? (you hold ${me.gold}; no order may carry more than ${t.commitCap})`
+        : `How much gold? (you hold ${me.gold})`),
+      // Explicit amounts, nothing pre-selected. With the commit cap the ceiling
+      // is small enough to lay out as chips, which is unambiguous in a way a
+      // slider resting on a default never was.
+      el('div', { class: 'gold-chips' }, [
+        ...Array.from({ length: Math.max(1, ceiling) }, (_, i) => i + 1).map((n) => el('button', {
+          class: `gold-chip${d.gold === n ? ' chosen' : ''}`,
+          onclick: () => { d.gold = n; render(); },
+        }, String(n))),
+        ceiling > 1 ? el('button', {
+          class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`,
+          onclick: () => { d.gold = ceiling; render(); },
+        }, 'All in') : null,
       ]),
     ]) : null,
     needsGold && d.target === CROWN ? el('p', { class: 'warn' }, `The Crown defends with ${crownStrength(s)} plus any support. Raising a hand against it sets your fealty to −3 either way.`) : null,
-    needsGold && d.target !== CROWN && d.order === ORDER.ATTACK ? attackPreview(s, me, d) : null,
+    needsGold && d.gold >= 1 && d.target && d.target !== CROWN && d.order === ORDER.ATTACK ? attackPreview(s, me, d) : null,
     fixedCost ? el('p', { class: 'blurb' }, `Cost: ${fixedCost} gold.`) : null,
+    ready ? null : el('p', { class: 'locked-note' }, `Still to choose: ${missing.join(', ')}.`),
     el('button', {
       class: 'primary big',
-      onclick: () => answer({ order: d.order, target: needsTarget ? d.target : null, gold: needsGold ? Math.min(d.gold || 1, me.gold) : 0 }),
+      disabled: !ready,
+      onclick: () => {
+        if (!ready) return;
+        answer({ order: d.order, target: needsTarget ? d.target : null, gold: needsGold ? Math.min(d.gold, me.gold) : 0 });
+      },
     }, 'Seal the order'),
   ]);
 }
