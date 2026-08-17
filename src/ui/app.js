@@ -23,6 +23,11 @@ import { playResolution } from './animate.js';
 
 const root = document.getElementById('app');
 
+// How long a transition beat holds when animation is on. Long enough to read
+// that the game moved, short enough not to nag — and always click-skippable.
+const INTERLUDE_MS = 850;
+const REVEAL_MS = 1300;
+
 const app = {
   game: null,
   generation: 0,
@@ -36,6 +41,7 @@ const app = {
   trayFor: null,
   trayDraft: null,
   trayNote: null,
+  pauseTimer: null, // the auto-advance handle for a transition beat
   dealDraft: null,
   dealReply: null,
   hoveredStage: null,
@@ -134,14 +140,30 @@ function startGame() {
   const game = new Game({
     state,
     controllers,
-    pause: async (label) => {
-      if (label === 'crown') return;
+    pause: async (beat) => {
+      // No watching human means a simulation or a headless run: never wait.
       if (app.humanSeats.size === 0) return;
-      // Show the round rather than listing it, then wait to be dismissed.
-      if (label === 'roundEnd' && app.settings.animate) await showResolution();
+      const kind = typeof beat === 'string' ? beat : beat?.kind;
+
+      // End of round: replay the resolution over the table, then hold on the
+      // recap until the player chooses to move on. This one is always manual —
+      // it is the moment to take stock.
+      if (kind === 'roundEnd') {
+        if (app.settings.animate) await showResolution();
+        await new Promise((resolve) => { app.paused = { kind, resolve }; render(); });
+        return;
+      }
+
+      // Transition beats (a card reveal, the step between phases) are part of
+      // the flow, not an afterthought: they mark the game advancing and give a
+      // second to read the board. Instant when animation is off; otherwise a
+      // short, self-clearing hold the player can click through.
+      if (!app.settings.animate) return;
       await new Promise((resolve) => {
-        app.paused = { label, resolve };
+        app.paused = { kind, beat, resolve, auto: true };
         render();
+        const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
+        app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, ms);
       });
     },
   });
@@ -180,6 +202,7 @@ async function showResolution() {
 }
 
 function resume() {
+  if (app.pauseTimer) { clearTimeout(app.pauseTimer); app.pauseTimer = null; }
   const p = app.paused;
   if (!p) return;
   app.paused = null;
@@ -624,7 +647,8 @@ function statusRow(s, p) {
         ? `They answered the Crown's levy, so their army is marching under the royal banner. Their walls are 0 this round — not ${t.walls} — and a house with no walls can be stripped of a title, not just a land. Everyone could see this before orders were sealed.`
         : `Their order was an attack, so their own gate is unmanned. Walls 0 this round instead of ${t.walls}.`),
     }, p.noArmy ? '⚑ host levied — no walls' : '⚔ in the field — no walls'));
-  } else if (s.lastCard === 'levy') {
+  } else if (p.levy === 'refuse') {
+    // Only once they have actually refused — not the instant a levy is flipped.
     chips.push(el('button', {
       class: 'status-chip home',
       onclick: () => openPopover(`${p.name}: host at home`, `They refused the Crown's levy and kept their army, so their walls are the full ${t.walls}. It cost them ${t.levyRefusal} fealty.`),
@@ -751,12 +775,45 @@ function stageView(s) {
       el('button', { class: 'ghost', onclick: () => { app.animating = false; } }, 'Skip'),
     ]);
   }
-  if (app.paused) return pausePanel(s);
+  if (app.paused) return app.paused.kind === 'roundEnd' ? pausePanel(s) : interludePanel(s);
   return el('section', { class: 'stage' }, [
     el('div', { class: 'waiting' }, [
       el('span', { class: 'spinner' }),
       el('p', {}, 'The court deliberates…'),
     ]),
+  ]);
+}
+
+/**
+ * The copy for each transition beat: what the game is moving into, and why. A
+ * reveal names the royal card and what it will do to the table; an interlude
+ * names the phase about to open. Purpose-written and short — this flashes past.
+ */
+function interludeCopy(s, paused) {
+  if (paused.kind === 'reveal') {
+    const card = paused.beat?.card ?? s.lastCard;
+    const what = {
+      tax: 'The Crown takes its due — coin from every house, and land from any that cannot pay.',
+      levy: 'The Crown calls up your host. Serve and your walls fall for the round; refuse and lose standing. Every house will see which you chose.',
+      favor: 'The Crown rewards the loyal — gold to every favourite, and land to those at the top of the track.',
+    }[card] || 'The court convenes.';
+    return { eyebrow: `Round ${s.round}`, title: card ? CARD_LABEL[card] : 'The royal card', text: what };
+  }
+  const stage = {
+    commit: { title: 'Sealed orders', text: 'Every house now chooses one order in secret and commits its gold.' },
+    whispers: { title: 'Whispers', text: 'The turncoats look, and — for a price — change their minds. The deal table stays open.' },
+    resolve: { title: 'The orders land', text: 'Sealed orders flip and settle: appeals first, then land, then support, then the swords.' },
+  }[paused.beat?.stage] || { title: 'The round turns', text: '' };
+  return { eyebrow: `Round ${s.round}`, ...stage };
+}
+
+function interludePanel(s) {
+  const copy = interludeCopy(s, app.paused);
+  return el('section', { class: 'stage interlude', onclick: resume }, [
+    el('span', { class: 'interlude-eyebrow' }, copy.eyebrow),
+    el('h2', { class: `interlude-title card-${app.paused.beat?.card || ''}` }, copy.title),
+    copy.text ? el('p', { class: 'interlude-text' }, copy.text) : null,
+    el('span', { class: 'interlude-hint' }, 'click to continue'),
   ]);
 }
 

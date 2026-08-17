@@ -107,9 +107,14 @@ export class Game {
       await this.crownFlip();
       if (s.winner) break;
       this.grantTurncoatTokens();
-      await this.pause('crown');
+      // A beat before each phase, so the game visibly *advances* rather than
+      // teleporting between states. The consequences of the royal card have
+      // landed and the board can be read before orders are asked for.
+      await this.pause({ kind: 'interlude', stage: 'commit' });
       await this.commitPhase();
+      await this.pause({ kind: 'interlude', stage: 'whispers' });
       await this.whispersPhase();
+      await this.pause({ kind: 'interlude', stage: 'resolve' });
       await this.resolvePhase();
       if (s.winner) break;
       this.incomeStep();
@@ -117,7 +122,7 @@ export class Game {
         this.inherit();
         break;
       }
-      await this.pause('roundEnd');
+      await this.pause({ kind: 'roundEnd' });
       decayTrust(s);
       s.round += 1;
       this.notify();
@@ -137,12 +142,18 @@ export class Game {
     // was otherwise still drawn "in the field" through the crown beat.)
     s.commitments = {};
     s.revealed = false;
-    // A host called up last round is home again before this one is called.
-    for (const p of s.players) p.noArmy = false;
+    // A host called up last round is home again before this one is called, and
+    // last round's levy answers are wiped so nothing stale colours the board.
+    for (const p of s.players) { p.noArmy = false; p.levy = null; }
     const card = s.deck.shift();
     s.discard.push(card);
     s.lastCard = card;
     this.emit('crown', `Round ${s.round}: the Crown reveals ${CARD_LABEL[card]}. Crown strength is now ${crownStrength(s)}.`, { card });
+
+    // Show the card before it bites. A levy in particular must be read and
+    // absorbed before anyone is asked to answer it — the consequences (walls
+    // down, a coronet in play) should never flash up ahead of the reveal.
+    await this.pause({ kind: 'reveal', card });
 
     if (card === CARD.TAX) this.resolveTax();
     else if (card === CARD.LEVY) await this.resolveLevy();
@@ -221,6 +232,7 @@ export class Game {
         text: `Send your host — no walls and no attack this round — or refuse and drop ${drop} fealty.`,
       });
       if (choice !== 'serve' && choice !== 'refuse') choice = 'refuse';
+      p.levy = choice;
       if (choice === 'serve') {
         p.noArmy = true;
         this.emit('levy', `${p.name} answers the levy. Their host marches for the Crown — no walls, no attack this round.`);

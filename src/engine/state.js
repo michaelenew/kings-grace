@@ -66,6 +66,12 @@ export function createGame(opts = {}) {
     escrow: 0,
     /** Set for the round when this house answers a levy: no walls, no attack. */
     noArmy: false,
+    /**
+     * How this house answered the round's levy: null until the levy is actually
+     * resolved, then 'serve' or 'refuse'. The board reads this, not the flipped
+     * card — so nobody is drawn as having refused a levy they have not answered.
+     */
+    levy: null,
     /** Turncoat tokens: earned in the shadow, spendable or tradeable (§2). */
     turncoat: 0,
   }));
