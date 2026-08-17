@@ -940,6 +940,27 @@ test('deals shut once the orders are resolving', async () => {
   assert.match(res.reason, /already resolving/);
 });
 
+test('rejecting or withdrawing sweeps the whole pot off the table', async () => {
+  const g = openTable();
+  set(g.state, 'p0', { gold: 10 });
+  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
+  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
+  await g.acceptDeal('p0');
+  // p1 has not decided; p1 rejects. The whole bargain is gone for everyone.
+  await g.clearDeal('p1', 'rejected');
+  assert.deepEqual(g.state.dealTable.offers, {});
+  assert.deepEqual(g.state.dealTable.takes, {});
+  assert.deepEqual(g.state.dealTable.accepted, []);
+
+  // Rebuild, both accept-eligible, then a house that had accepted pulls out.
+  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
+  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
+  await g.acceptDeal('p0');
+  await g.clearDeal('p0', 'withdrew');
+  assert.deepEqual(g.state.dealTable.offers, {});
+  assert.deepEqual(g.state.dealTable.takes, {});
+});
+
 // ------------------------------------------------- precedence at court (§5)
 
 test('equal attacks land in order of standing, then land, then wealth', async () => {

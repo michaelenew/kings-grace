@@ -419,39 +419,22 @@ function tableView(s) {
 }
 
 /**
- * Each house's side of the open bargain, sitting next to their marker. Yours is
- * editable; everyone else's is just visible, which is the point — a deal is a
- * thing on the table, not a conversation you have to remember.
+ * What sits beside a rival's marker now that the bargain itself has moved to the
+ * middle of the table: the one thing that is aimed at them and nobody else —
+ * your word. Your own seat shows nothing here; the deal is public and central.
  */
 function dealTray(s, p) {
-  const table = s.dealTable || { offers: {}, takes: {}, accepted: [] };
-  const offer = table.offers?.[p.id];
-  const take = table.takes?.[p.id];
-  const involved = !isEmptyGoods(offer) || !isEmptyGoods(take);
-  const mine = app.humanSeats.has(p.id);
-  const accepted = table.accepted?.includes(p.id);
-  if (!involved && !mine) return null;
+  if (app.humanSeats.has(p.id)) return null;
+  const word = giveWordButton(s, p);
+  return word ? el('div', { class: 'tray' }, [word]) : null;
+}
 
-  return el('div', { class: `tray${involved ? ' active' : ''}${accepted ? ' accepted' : ''}` }, [
-    involved ? el('div', { class: 'tray-terms' }, [
-      el('span', { class: 'tray-line' }, [el('b', {}, 'offers '), describeGoods(offer || {})]),
-      el('span', { class: 'tray-line' }, [el('b', {}, 'takes '), describeGoods(take || {})]),
-    ]) : null,
-    mine ? el('div', { class: 'tray-actions' }, [
-      el('button', { class: 'ghost small', onclick: () => { app.trayFor = p.id; render(); } }, involved ? 'Change' : 'Offer a deal'),
-      involved ? el('button', {
-        class: `small${accepted ? ' primary' : ''}`,
-        onclick: async () => {
-          const res = await app.game.acceptDeal(p.id);
-          app.trayNote = res.settled ? 'Struck.' : (res.reason || `Waiting on ${(res.waiting || []).join(', ')}`);
-          await app.game.inviteBotAcceptance();
-          render();
-        },
-      }, accepted ? 'Accepted' : 'Accept') : null,
-      involved ? el('button', { class: 'ghost small', onclick: async () => { await app.game.withdrawFromDeal(p.id); render(); } }, 'Withdraw') : null,
-    ]) : accepted ? el('span', { class: 'tray-ok' }, 'accepted') : null,
-    mine ? null : giveWordButton(s, p),
-  ]);
+/** Everyone with something on the open pot, either side. */
+function dealParties(table) {
+  const ids = new Set();
+  for (const [pid, g] of Object.entries(table?.offers || {})) if (!isEmptyGoods(g)) ids.add(pid);
+  for (const [pid, g] of Object.entries(table?.takes || {})) if (!isEmptyGoods(g)) ids.add(pid);
+  return [...ids];
 }
 
 /**
@@ -500,7 +483,12 @@ function centrePiece(s) {
       el('div', { class: 'meter' }, [
         el('div', { class: 'meter-fill', style: `width:${Math.min(100, (strength / Math.max(1, full)) * 100)}%` }),
       ]),
+      el('div', { class: 'centre-land', title: 'Fields nobody holds. Develop draws from here; a house that pays its tax in land feeds it back.' }, [
+        el('span', {}, 'Unclaimed land'),
+        el('strong', { class: s.neutralPool > 0 ? '' : 'empty' }, String(s.neutralPool ?? 0)),
+      ]),
     ]),
+    centreDeal(s),
     el('div', { class: 'centre-titles' }, [
       el('span', { class: 'crown-card-label' }, 'Titles'),
       el('div', { class: 'title-array' }, TITLES.map((t) => {
@@ -514,6 +502,73 @@ function centrePiece(s) {
         ]);
       })),
     ]),
+  ]);
+}
+
+/**
+ * The open bargain, in the middle of the table where everyone can see it. A deal
+ * is public knowledge: each house's side of it and whether they have accepted
+ * are on show to the whole court. Any human seat may propose one; a house that
+ * is in a deal accepts it, rejects it (if still deciding), or — once accepted —
+ * pulls out. Rejecting or pulling out sweeps the whole deal away for everybody.
+ */
+function centreDeal(s) {
+  const table = s.dealTable || { offers: {}, takes: {}, accepted: [] };
+  const parts = dealParties(table);
+  const open = !!app.game?.dealsOpen;
+  const humans = s.players.filter((p) => app.humanSeats.has(p.id));
+
+  const acceptDeal = async (pid) => {
+    const res = await app.game.acceptDeal(pid);
+    app.trayNote = res.settled ? 'The bargain is struck.'
+      : (res.reason || `Waiting on ${(res.waiting || []).join(', ')}.`);
+    await app.game.inviteBotAcceptance();
+    render();
+  };
+
+  const rows = parts.map((pid) => {
+    const p = s.players.find((x) => x.id === pid);
+    if (!p) return null;
+    const accepted = table.accepted?.includes(pid);
+    const mine = app.humanSeats.has(pid);
+    return el('div', { class: `deal-party${accepted ? ' accepted' : ''}` }, [
+      el('div', { class: 'deal-party-head' }, [
+        el('b', {}, p.name),
+        el('span', { class: `deal-status ${accepted ? 'yes' : 'wait'}` }, accepted ? '✓ accepted' : 'deciding…'),
+      ]),
+      el('div', { class: 'deal-party-terms' }, [
+        el('span', {}, [el('b', {}, 'offers '), describeGoods(table.offers?.[pid] || {})]),
+        el('span', {}, [el('b', {}, 'takes '), describeGoods(table.takes?.[pid] || {})]),
+      ]),
+      mine && open ? el('div', { class: 'deal-party-actions' }, [
+        el('button', { class: 'ghost small', onclick: () => { app.trayFor = pid; render(); } }, 'Change'),
+        accepted
+          ? el('button', { class: 'ghost small', onclick: async () => { await app.game.clearDeal(pid, 'withdrew'); app.trayNote = null; render(); } }, 'Withdraw')
+          : el('span', { class: 'deal-decide' }, [
+            el('button', { class: 'small primary', onclick: () => acceptDeal(pid) }, 'Accept'),
+            el('button', { class: 'ghost small', onclick: async () => { await app.game.clearDeal(pid, 'rejected'); app.trayNote = null; render(); } }, 'Reject'),
+          ]),
+      ]) : null,
+    ]);
+  }).filter(Boolean);
+
+  // A house may only offer once it is not already on the table; a human at the
+  // table changes their side through the row above.
+  const canOffer = open ? humans.filter((p) => !parts.includes(p.id)) : [];
+  const offerBtns = canOffer.map((p) => el('button', {
+    class: 'deal-offer-btn',
+    onclick: () => { app.trayFor = p.id; render(); },
+  }, humans.length > 1 ? `Offer a deal — ${p.name.split(' ')[0]}` : 'Offer a deal'));
+
+  return el('div', { class: 'centre-deal' }, [
+    el('span', { class: 'crown-card-label' }, 'The bargaining table'),
+    parts.length
+      ? el('div', { class: 'deal-parties' }, rows)
+      : el('p', { class: 'deal-empty' }, open
+        ? 'No bargain on the table. Deals are struck in the open, for all to see.'
+        : 'The court is not bargaining now.'),
+    app.trayNote ? el('p', { class: 'deal-note' }, app.trayNote) : null,
+    ...offerBtns,
   ]);
 }
 
@@ -884,30 +939,29 @@ function orderForm(s, me, request, view) {
       el('span', {}, t.commitCap && me.gold > ceiling
         ? `How much gold? (you hold ${me.gold}; no order may carry more than ${t.commitCap})`
         : `How much gold? (you hold ${me.gold})`),
-      // Nothing pre-selected: the slider label reads "choose" and the Seal
-      // button stays disabled until a value is set. Small purses get chips;
-      // large ones (gold is uncapped) get a slider with quick-set buttons.
-      ceiling <= 10
-        ? el('div', { class: 'gold-chips' }, [
-          ...Array.from({ length: Math.max(1, ceiling) }, (_, i) => i + 1).map((n) => el('button', {
-            class: `gold-chip${d.gold === n ? ' chosen' : ''}`,
-            onclick: () => { d.gold = n; render(); },
-          }, String(n))),
-          ceiling > 1 ? el('button', {
-            class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`,
-            onclick: () => { d.gold = ceiling; render(); },
-          }, 'All in') : null,
-        ])
-        : el('div', { class: 'gold-row' }, [
-          el('input', {
-            type: 'range', min: 1, max: ceiling, value: String(d.gold ?? 1),
-            oninput: (e) => { d.gold = Number(e.target.value); render(); },
-          }),
-          el('span', { class: 'gold-value' }, d.gold >= 1 ? String(d.gold) : 'choose'),
-          el('button', { class: `gold-chip${d.gold === 1 ? ' chosen' : ''}`, onclick: () => { d.gold = 1; render(); } }, '1'),
-          el('button', { class: `gold-chip${d.gold === Math.ceil(ceiling / 2) ? ' chosen' : ''}`, onclick: () => { d.gold = Math.ceil(ceiling / 2); render(); } }, 'Half'),
-          el('button', { class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`, onclick: () => { d.gold = ceiling; render(); } }, 'All in'),
-        ]),
+      // Just type it. A slider was fiddly for a value that is usually a small
+      // whole number the player already has in mind; a text box is quicker and
+      // does not fight the mouse. Nothing is pre-filled, so the Seal button
+      // stays disabled until a real amount is entered.
+      //
+      // onchange (blur/Enter), not oninput, on purpose: re-rendering on every
+      // keystroke would tear down and rebuild the input and drop focus mid-type.
+      // The quick buttons cover the common picks without touching the keyboard.
+      el('div', { class: 'gold-row' }, [
+        el('input', {
+          type: 'number', min: 1, max: ceiling, inputmode: 'numeric',
+          class: 'gold-input', placeholder: 'choose',
+          value: d.gold >= 1 ? String(d.gold) : '',
+          onchange: (e) => {
+            const raw = Math.floor(Number(e.target.value));
+            d.gold = raw >= 1 ? Math.min(raw, ceiling) : null;
+            render();
+          },
+        }),
+        el('button', { class: `gold-chip${d.gold === 1 ? ' chosen' : ''}`, onclick: () => { d.gold = 1; render(); } }, '1'),
+        ceiling > 2 ? el('button', { class: `gold-chip${d.gold === Math.ceil(ceiling / 2) ? ' chosen' : ''}`, onclick: () => { d.gold = Math.ceil(ceiling / 2); render(); } }, 'Half') : null,
+        ceiling > 1 ? el('button', { class: `gold-chip all${d.gold === ceiling ? ' chosen' : ''}`, onclick: () => { d.gold = ceiling; render(); } }, 'All in') : null,
+      ]),
     ]) : null,
     needsGold && d.target === CROWN ? el('p', { class: 'warn' }, `The Crown defends with ${crownStrength(s)} plus any support. Raising a hand against it sets your fealty to −3 either way.`) : null,
     needsGold && d.gold >= 1 && d.target && d.target !== CROWN && d.order === ORDER.ATTACK ? attackPreview(s, me, d) : null,

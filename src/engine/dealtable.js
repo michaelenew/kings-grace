@@ -103,6 +103,16 @@ export function withdraw(state, pid) {
   return table;
 }
 
+/**
+ * Sweep the whole pot off the table. A deal is public and shared, so any one
+ * house souring on it — an undecided house that rejects, or a house that had
+ * accepted and pulls out — kills it for everybody. There is no half a deal.
+ */
+export function killTable(state) {
+  state.dealTable = blankTable();
+  return state.dealTable;
+}
+
 /** Move everything at once. Assumes dealProblem returned null. */
 export function settleTable(game) {
   const state = game.state;

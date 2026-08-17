@@ -342,6 +342,21 @@ export class Game {
   }
 
   /**
+   * Sweep the open deal off the table entirely. A public, shared bargain dies
+   * the moment any one house involved turns on it — an undecided house that
+   * rejects it, or a house that had accepted and pulls out. Both routes land
+   * here; the reason only colours the note in the chronicle.
+   */
+  async clearDeal(pid, reason = 'rejected') {
+    const { killTable } = await import('./dealtable.js');
+    const word = reason === 'withdrew' ? 'pulls out of' : 'rejects';
+    killTable(this.state);
+    this.emit('deal', `${this.nameOf(pid)} ${word} the bargain; it comes off the table.`, { quiet: true });
+    this.notify();
+    return this.state.dealTable;
+  }
+
+  /**
    * Accept the terms as they stand. When everyone involved has accepted and the
    * pot balances, it settles at once.
    */
