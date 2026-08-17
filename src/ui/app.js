@@ -90,7 +90,7 @@ function humanController(pid) {
 }
 
 function isPrivate(request) {
-  return ['order', 'peekChoice', 'peekTarget', 'turncoat', 'deal'].includes(request.type);
+  return ['order', 'peekChoice', 'peekTarget', 'peekResult', 'turncoat', 'deal'].includes(request.type);
 }
 
 function answer(value) {
@@ -583,8 +583,8 @@ function statusRow(s, p) {
       class: 'status-chip token',
       onclick: () => openPopover('Turncoat tokens', [
         `${p.name} holds ${p.turncoat}.`,
-        'A turncoat token lets its holder change their own sealed order at the whispers step, after the peeking is done. One is taken every round a house sits in the outlaw band.',
-        `Tokens are goods, not rights: they can be sold at the deal table, and the buyer can spend them. That is why a house at neutral standing can be holding several — a house may only *take* ${t.turncoatMax} from the shadow, but there is no limit on how many it can buy.`,
+        'A turncoat token does two things across the whispers step. In espionage, holding one lets you read a rival’s sealed order or the next royal card — both at −3. In duplicity, spending one lets you change your own sealed order. Looking does not spend it; changing does.',
+        `An outlaw takes one as the round opens, and only when it holds none — so the shadow never hands a second while you still hold the first. Tokens are goods: sell one at the deal table and the buyer gets its eyes and its change. There is no cap on how many a house can buy, which is why a neutral house can be sitting on several.`,
       ].join('\n\n')),
     }, `${p.turncoat} turncoat token${p.turncoat === 1 ? '' : 's'}`));
   }
@@ -1006,14 +1006,17 @@ function peekResultForm(s, request) {
         ? describeOrder(request.order, (id) => nameOf(s, id), s.tuning.pardonCost)
         : 'They have sealed nothing.'),
     ]);
+  const me = viewingSeat(s);
+  const deep = me && me.fealty <= -3;
   return el('div', { class: 'form' }, [
     el('p', { class: 'blurb' }, request.kind === 'card'
-      ? 'You look at the top of the royal deck. Next round opens with this.'
-      : 'You read their sealed order. It can still change if they hold a turncoat token.'),
+      ? 'Your turncoat token’s eyes on the top of the royal deck. Next round opens with this.'
+      : 'Your turncoat token’s eyes on their sealed order. It can still change if they too hold a token.'),
     found,
+    deep ? el('p', { class: 'blurb dim' }, 'At −3 the deep shadow shows you both a rival’s order and the next card — for the one token.') : null,
     el('p', { class: request.canChange ? 'blurb' : 'warn' }, request.canChange
-      ? `You hold ${request.tokens} turncoat token${request.tokens === 1 ? '' : 's'}, so you may still change your own sealed order after this.`
-      : 'You hold no turncoat token, so your own order stands as sealed. A token is taken every round you spend in the outlaw band, and they can be bought at the deal table.'),
+      ? 'You still hold the token, so in the duplicity beat you may spend it to change your own sealed order — unless you trade it away first.'
+      : 'This was the Spymaster’s free look; you hold no turncoat token, so your own order stands as sealed.'),
     el('button', { class: 'primary big', onclick: () => answer(null) }, 'Keep it to yourself'),
   ]);
 }
@@ -1094,14 +1097,15 @@ function showRules() {
       section('The round', [
         'Crown flip — reveal and resolve one crown card.',
         'Table talk — anyone may put a proposal to anyone. Gold moves; promises do not bind.',
-        'Commit — everyone seals one order. Outlaws then peek and may turn a coat.',
+        'Commit — everyone seals one order in secret.',
+        'Whispers, in two beats: espionage (a turncoat token lets you read a rival’s order or the next card — both at −3), then duplicity (spend a token to change your own order). Deals are open between them, so the token can be sold.',
         'Reveal & resolve — petitions and pardons first, then attacks, then spoils.',
         'Income — 1 gold per land; neutrals take 1 more.',
       ]),
       section('Bands', [
         'Favorite (+2, +3): attacks gain +fealty, but only against someone lower than you. Never against the Crown. Titles at +2 and +3, once each.',
         `Neutral (−1, 0, +1): +${t.neutralIncome} gold every income step.`,
-        'Outlaw (−2, −3): peek before reveal (−2: one order or the top card; −3: both), then one change of orders you may keep or give away. Taxed hardest.',
+        'Outlaw (−2, −3): take one turncoat token as the round opens — the right to spy in espionage and to reseal in duplicity. Taxed hardest.',
       ]),
       section('Orders', [
         'Attack [target] — 1+ gold. Your walls drop to 0 this round.',

@@ -14,7 +14,7 @@ served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 96 rules, bot, trust and balance tests
+npm test                   # 99 rules, bot, trust and balance tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 

@@ -62,10 +62,9 @@ commitment time.
 - **+1 gold** in every income step. Nobody's watching your fields.
 
 ### Outlaw (−2, −3) — the shadow
-- **Peek:** after all orders are committed but before reveal — at −2, look at *either* one player's committed order *or* the top card of the crown deck; at −3, look at **both**.
-- **Turncoat token:** after peeking you take a **turncoat token**. Anyone holding one may spend it in the whispers step to change their own sealed order. Tokens are goods, not rights — sell one at the deal table and the buyer can spend it themselves.
-- The **cap of two is on taking**, not on holding: a house may only draw two from the shadow, and there is no limit on how many it can buy. That is why a house at neutral standing can be sitting on five.
-- **Peeking and changing are separate rights.** You look because you are an outlaw; you may change because you hold a token. A house that peeks with an empty hand has bought information and nothing else.
+- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. There is no limit on how many a house can *buy*, which is why a house at neutral standing can be sitting on several.
+- **A token is what buys the whispers** (§3), both of them: the right to spy in espionage and the right to reseal in duplicity. No token, no peek, whatever your standing — and a house that buys one may spy with it.
+- **Standing sets only how much you see.** With a token, an outlaw at −2 reads one thing; at −3, both a rival's order and the next royal card. A house above the outlaw band that holds a bought token reads one thing.
 - The crown taxes you at the highest rate (§6).
 
 ---
@@ -76,13 +75,17 @@ One loop, five steps:
 
 1. **The royal card.** Reveal the top crown card and resolve it immediately (§6). Outlaws take their turncoat token now.
 2. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
-3. **Whispers.** Outlaws peek (§2). Anyone holding a turncoat token may spend it to change their own sealed order — including one they bought earlier in the round.
-4. **Reveal & resolve.** All orders flip at once and settle in a fixed order:
-   1. **Appeals and pardons** — standing moves now, so every band effect is already updated when the swords land,
-   2. **Develops** — land is settled,
-   3. **Support** — counted toward whoever it was aimed at,
-   4. **Attacks and spoils.**
+3. **Whispers**, in two beats with the table open between them:
+   1. **Espionage** — a turncoat token is the right to *look*. Whoever holds one reads a rival's sealed order or the next royal card (both, at −3). Looking does not spend the token.
+   2. **Duplicity** — a token is also the right to *change your own sealed order*. Whoever holds one now may spend it to reseal. The house that spied and the house that reseals need not be the same one, because a token can change hands between the beats.
+4. **Reveal & resolve.** All orders flip at once and settle in this **fixed order** — it is not the order they were sealed in, and it decides everything:
+   1. **Appeals and pardons** — standing moves *first*, so every band effect (a favorite's punch-down, an outlaw's exposure) is already updated before anything else is worked out. A pardoned outlaw is a neutral by the time the swords land.
+   2. **Develop** — land settles next, so a field bought this round cannot be looted the same round.
+   3. **Support** — counted toward whoever it was aimed at, now that we know who is attacking.
+   4. **Attacks and spoils** — resolved last, against the standing, land and support already fixed above.
 5. **Income.** Each land pays 1 gold; neutrals gain +1.
+
+The one-line version: **petition → develop → support → attack.**
 
 **Deals are not a step.** The table is open from the moment the royal card turns
 until the orders begin resolving. Each house sets what it is **offering** and

@@ -19,10 +19,16 @@ export const STAGES = [
     detail: 'Everyone chooses one order in secret — attack, support, appeal or develop — and commits gold to it. Committed gold is spent whatever happens, and cannot be traded away afterwards.',
   },
   {
-    id: 'peek',
-    label: 'Whispers',
-    phases: ['peek'],
-    detail: 'Outlaws look at what they should not: a rival’s sealed order, or the next royal card, or at −3 both. Anyone holding a turncoat token may spend it here to change their own sealed order — including a token they bought earlier in the round.',
+    id: 'espionage',
+    label: 'Whispers · Espionage',
+    phases: ['espionage'],
+    detail: 'A turncoat token is the right to look. Whoever holds one reads a rival’s sealed order or the next royal card — both, at −3. Looking does not spend the token. No token, no peek, whatever your standing: sell your coat and you have sold your eyes.',
+  },
+  {
+    id: 'duplicity',
+    label: 'Whispers · Duplicity',
+    phases: ['duplicity'],
+    detail: 'The token is also the right to change your own sealed order. Whoever holds one now may spend it to reseal. Between the looking and the changing the table is open, so a token can be sold to whoever wants the change — the house that spied and the house that reseals need not be the same one.',
   },
   {
     id: 'resolve',

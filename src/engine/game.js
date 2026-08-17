@@ -109,7 +109,7 @@ export class Game {
       this.grantTurncoatTokens();
       await this.pause('crown');
       await this.commitPhase();
-      await this.peekPhase();
+      await this.whispersPhase();
       await this.resolvePhase();
       if (s.winner) break;
       this.incomeStep();
@@ -131,6 +131,12 @@ export class Game {
   async crownFlip() {
     const s = this.state;
     this.setPhase('crownFlip');
+    // The previous round is fully over — clear its orders and lower the reveal
+    // flag now, not at the commit step, so nothing on the board reads as stale
+    // while this round's card is being shown. (A house that attacked last round
+    // was otherwise still drawn "in the field" through the crown beat.)
+    s.commitments = {};
+    s.revealed = false;
     // A host called up last round is home again before this one is called.
     for (const p of s.players) p.noArmy = false;
     const card = s.deck.shift();
@@ -447,20 +453,37 @@ export class Game {
     return this.commit(pid, answer);
   }
 
-  // ---------------------------------------- 2b. peeks & turncoat rights (§2)
+  // ---------------------------------------- 2b. whispers: espionage & duplicity
 
-  async peekPhase() {
+  /**
+   * The whispers step, in two beats with a bargaining window between them (§2).
+   *
+   *   Espionage — a turncoat token is the right to *look*. Whoever holds one
+   *     may read a rival's sealed order or the next royal card (both, at −3).
+   *     Looking does not spend the token. This is the fix for the old bug: the
+   *     right to peek used to be tied to the outlaw band, so a house that sold
+   *     its token could still spy. Now no token means no peek, whatever your
+   *     standing — and a house that *buys* a token can spy.
+   *
+   *   The deal window — the table is open, and now is when a token changes
+   *     hands: the spy has looked, and can sell what the buyer will use.
+   *
+   *   Duplicity — a token is also the right to *change your own sealed order*.
+   *     Whoever holds one at this beat may spend it to reseal. The house that
+   *     peeked and the house that changes need not be the same one.
+   */
+  async whispersPhase() {
     const s = this.state;
-    this.setPhase('peek');
-    await this.inviteBotDeals();
-    await this.inviteBotAcceptance();
     for (const p of s.players) if (!s.knowledge[p.id]) s.knowledge[p.id] = { orders: {}, topCard: null };
 
-    for (const p of seatOrder(s)) {
-      const band = bandOf(p.fealty);
-      const isOutlaw = band === BAND.OUTLAW;
+    // ---- Espionage --------------------------------------------------------
+    this.setPhase('espionage');
+    await this.inviteBotDeals();
+    await this.inviteBotAcceptance();
 
-      if (isOutlaw) {
+    for (const p of seatOrder(s)) {
+      // The token is what buys the look. Standing only sets how much you see.
+      if (p.turncoat > 0) {
         const both = p.fealty <= -3;
         if (both) {
           await this.doPeek(p, 'order');
@@ -469,37 +492,43 @@ export class Game {
           const pick = await this.ask(p.id, {
             type: 'peekChoice',
             options: ['order', 'card'],
-            text: 'Outlaw at −2: peek at one player\'s order, or at the top crown card.',
+            text: 'Spend your turncoat token’s eyes: read one house’s order, or the next royal card.',
           });
           await this.doPeek(p, pick === 'card' ? 'card' : 'order');
         }
       }
-
+      // The Spymaster reads one order every round, token or no token (§7).
       if (hasTitle(p, 'spymaster')) {
         await this.doPeek(p, 'order', true);
       }
     }
 
-    // Tokens are spent after every outlaw has looked. A token is a thing you
-    // hold, so it can be traded away in a deal before it is ever spent.
+    // ---- The deal window --------------------------------------------------
+    // Between the two beats, tokens trade: a spy sells the coat now that they
+    // have seen what it is worth. Deals are open for a human throughout; this
+    // is the beat where the bots reach for one.
+    await this.inviteBotDeals();
+    await this.inviteBotAcceptance();
+
+    // ---- Duplicity --------------------------------------------------------
+    this.setPhase('duplicity');
     for (const p of seatOrder(s)) {
-      while (p.turncoat > 0) {
-        const answer = await this.ask(p.id, {
-          type: 'turncoat',
-          tokens: p.turncoat,
-          text: 'Spend a turncoat token to change your sealed order?',
-        });
-        if (answer?.action !== 'change') break;
-        p.turncoat -= 1;
-        const next = await this.ask(p.id, {
-          type: 'order',
-          legal: legalOrders(s, { ...p, gold: p.gold + p.escrow }),
-          petitionCost: petitionCostFor(s, p),
-          reason: 'turncoat',
-        });
-        this.recommit(p.id, next);
-        this.emit('turncoat', `${p.name} spends a turncoat token and quietly changes their order.`, { secret: true, pid: p.id });
-      }
+      if (p.turncoat <= 0) continue;
+      const answer = await this.ask(p.id, {
+        type: 'turncoat',
+        tokens: p.turncoat,
+        text: 'Spend a turncoat token to change your sealed order?',
+      });
+      if (answer?.action !== 'change') continue;
+      p.turncoat -= 1;
+      const next = await this.ask(p.id, {
+        type: 'order',
+        legal: legalOrders(s, { ...p, gold: p.gold + p.escrow }),
+        petitionCost: petitionCostFor(s, p),
+        reason: 'turncoat',
+      });
+      this.recommit(p.id, next);
+      this.emit('turncoat', `${p.name} spends a turncoat token and quietly changes their order.`, { secret: true, pid: p.id });
     }
   }
 
@@ -514,6 +543,9 @@ export class Game {
     return this.ask(peeker.id, {
       type: 'peekResult',
       ...found,
+      // You still hold the token after looking — spending it to change your
+      // own order is the *next* beat, so a "yes" here means "unless you trade
+      // it away first". The Spymaster peek carries no token, hence tokens>0.
       canChange: peeker.turncoat > 0,
       tokens: peeker.turncoat,
     });
@@ -1008,7 +1040,7 @@ export function describeOrder(c, nameOf, pardonCost = 3) {
     case ORDER.PETITION: return c.gold >= pardonCost ? `Petition (pardon, ${c.gold} gold)` : `Petition (${c.gold} gold)`;
     case ORDER.DEVELOP: return `Develop (${c.gold} gold)`;
     case ORDER.RANSOM: return `Ransom ${nameOf(c.target)}`;
-    default: return 'Hold';
+    default: return 'Hold (no action)';
   }
 }
 

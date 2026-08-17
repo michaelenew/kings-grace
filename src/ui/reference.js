@@ -29,7 +29,7 @@ export function referenceCard(tuning, players) {
       el('p', { class: 'ref-line dim' }, 'Fealty runs −3 to +3. Appeal to climb; refuse a levy, strike a favorite, or raise a hand against the Crown to fall.'),
       line(`${BAND_LABEL.favorite} (+2, +3)`, `Attacks gain +fealty against anyone lower — never against the Crown. A title at +2 and another at +3, once each. The grant may take a title somebody already holds, for ${tuning.titleClaimCost} gold.`),
       line(`${BAND_LABEL.neutral} (−1 to +1)`, `+${tuning.neutralIncome} gold every income step. Nobody is watching your fields.`),
-      line(`${BAND_LABEL.outlaw} (−2, −3)`, 'Take a turncoat token as the round opens — sell it, or spend it at the whispers step to change your sealed order. Peek before the reveal. Taxed hardest.'),
+      line(`${BAND_LABEL.outlaw} (−2, −3)`, 'Take a turncoat token as the round opens (one at a time; none while you still hold one). Taxed hardest.'),
     ]),
 
     block('Orders — one each round', [
@@ -62,6 +62,11 @@ export function referenceCard(tuning, players) {
     block('Deals', [
       el('p', { class: 'ref-line dim' }, 'Set what you offer and what you take on your side of the table. Everything offered has to match everything taken across all houses. It settles the moment every house involved has accepted — and touching any term withdraws every acceptance.'),
       el('p', { class: 'ref-line dim' }, 'Gold, land, titles and turncoat tokens move. Nothing anybody says they will *do* is part of it.'),
+    ]),
+
+    block('Whispers', [
+      el('p', { class: 'ref-line dim' }, 'Two beats. Espionage: a turncoat token lets you read a rival’s sealed order or the next royal card — both at −3. Looking does not spend it. No token, no peek.'),
+      el('p', { class: 'ref-line dim' }, 'Duplicity: spend a token to change your own sealed order. The table is open between the two, so a token — its eyes and its change — can be sold to whoever wants it.'),
     ]),
 
     block('Your word', [

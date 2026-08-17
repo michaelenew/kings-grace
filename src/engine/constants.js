@@ -26,7 +26,7 @@ export const ORDER_LABEL = {
   [ORDER.PETITION]: 'Petition',
   [ORDER.DEVELOP]: 'Develop',
   [ORDER.RANSOM]: 'Ransom',
-  [ORDER.HOLD]: 'Hold',
+  [ORDER.HOLD]: 'Hold (no action)',
 };
 
 /** Crown deck card types (§6). */

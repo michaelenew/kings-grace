@@ -27,8 +27,15 @@ export const RULES = {
    * land-tax recycling above worth having: fields have somewhere to go back to.
    */
   neutralPerPlayer: 3,
-  /** Most unspent turncoat tokens a player may hold at once. */
-  turncoatMax: 2,
+  /**
+   * The most tokens the *shadow* will hand one house — a cap on taking, not on
+   * holding. An outlaw takes one at the start of a round only when it holds
+   * none, so it never self-stacks past this; there is no limit on how many a
+   * house can *buy* at the deal table. One, because a token is used within the
+   * round it is earned (peek, then change or sell), and a banked second was
+   * only ever confusing.
+   */
+  turncoatMax: 1,
   deck: { tax: 3, levy: 4, favor: 3 },
 
   // ---- The Crown ------------------------------------------------------

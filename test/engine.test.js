@@ -693,21 +693,21 @@ test('an outlaw peeks, earns a token and may spend it', async () => {
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
-  await g.peekPhase();
+  await g.whispersPhase();
   assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP);
   assert.deepEqual(Object.keys(g.state.knowledge.p0.orders), ['p1']);
 });
 
 test('an outlaw at −3 sees both a rival order and the top card', async () => {
   const g = makeGame({ controllers: { p0: { peekTarget: 'p2' } } });
-  set(g.state, 'p0', { fealty: -3, gold: 6 });
+  set(g.state, 'p0', { fealty: -3, gold: 6, turncoat: 1 });
   fillOrders(g, {
     p0: { order: ORDER.DEVELOP },
     p1: { order: ORDER.PETITION },
     p2: { order: ORDER.PETITION },
     p3: { order: ORDER.PETITION },
   });
-  await g.peekPhase();
+  await g.whispersPhase();
   assert.equal(g.state.knowledge.p0.topCard, g.state.deck[0]);
   assert.ok(g.state.knowledge.p0.orders.p2);
 });
@@ -734,10 +734,49 @@ test('a turncoat token can be traded away and spent by whoever holds it', async 
   assert.equal(get(g.state, 'p0').turncoat, 0);
   assert.equal(get(g.state, 'p1').turncoat, 1);
 
-  await g.peekPhase();
+  await g.whispersPhase();
   assert.equal(g.state.commitments.p1.order, ORDER.DEVELOP, 'the buyer spent it');
   assert.equal(get(g.state, 'p1').turncoat, 0);
   assert.equal(g.state.commitments.p0.order, ORDER.DEVELOP, 'the seller keeps their own order');
+});
+
+test('the token is the eyes: an outlaw who sold it cannot peek', async () => {
+  const g = makeGame({ controllers: { p0: { peekChoice: 'order', peekTarget: 'p1' } } });
+  set(g.state, 'p0', { fealty: -3, gold: 6, turncoat: 0 }); // an outlaw holding no token
+  fillOrders(g, {
+    p0: { order: ORDER.DEVELOP },
+    p1: { order: ORDER.ATTACK, target: 'p2', gold: 1 },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.whispersPhase();
+  assert.deepEqual(Object.keys(g.state.knowledge.p0.orders), [], 'no token, no spying');
+  assert.equal(g.state.knowledge.p0.topCard, null, 'not even at −3');
+});
+
+test('a house at neutral standing can spy with a bought token', async () => {
+  const g = makeGame({ controllers: { p1: { peekChoice: 'order', peekTarget: 'p0' } } });
+  set(g.state, 'p1', { fealty: 0, turncoat: 1 }); // bought a coat, is nobody's outlaw
+  fillOrders(g, {
+    p0: { order: ORDER.ATTACK, target: 'p2', gold: 1 },
+    p1: { order: ORDER.PETITION },
+    p2: { order: ORDER.PETITION },
+    p3: { order: ORDER.PETITION },
+  });
+  await g.whispersPhase();
+  assert.ok(g.state.knowledge.p1.orders.p0, 'the token buys the look, whatever your standing');
+});
+
+test('the shadow hands one token at a time; a pardon conjures no second', async () => {
+  const g = makeGame();
+  set(g.state, 'p0', { fealty: -2, turncoat: 0 });
+  g.grantTurncoatTokens();
+  assert.equal(get(g.state, 'p0').turncoat, 1, 'one arrives');
+  g.grantTurncoatTokens();
+  assert.equal(get(g.state, 'p0').turncoat, 1, 'and no second while it still holds one');
+  set(g.state, 'p0', { fealty: 0 }); // pardoned out of the band
+  g.grantTurncoatTokens();
+  assert.equal(get(g.state, 'p0').turncoat, 1, 'a neutral takes none — the one it has is the one it earned');
 });
 
 // ------------------------------------------------------ ransom module (§9)
