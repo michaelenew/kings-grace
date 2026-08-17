@@ -864,19 +864,21 @@ const openTable = (opts) => {
   return g;
 };
 
-test('an open deal settles only when it balances and everyone accepts', async () => {
+test('a proposed deal settles once every house named accepts', async () => {
   const g = openTable();
   set(g.state, 'p0', { gold: 10, lands: 3 });
   set(g.state, 'p1', { gold: 4, lands: 3 });
 
-  await g.setDealTerms('p0', { offers: { gold: 6 }, takes: { lands: 1 } });
-  await g.setDealTerms('p1', { offers: { lands: 1 }, takes: { gold: 6 } });
+  // One house builds the whole thing: p0 gives 6 gold, p1 gives a land back.
+  const res0 = await g.proposeDealTable('p0', [
+    { from: 'p0', to: 'p1', goods: { gold: 6 } },
+    { from: 'p1', to: 'p0', goods: { lands: 1 } },
+  ]);
+  assert.equal(res0.ok, true);
+  // The proposer has accepted by building it; it waits on p1 alone.
+  assert.deepEqual(g.state.dealTable.accepted, ['p0']);
 
-  let res = await g.acceptDeal('p0');
-  assert.equal(res.settled, false, 'one signature is not a bargain');
-  assert.deepEqual(res.waiting, ['Roderic of Thornfell']);
-
-  res = await g.acceptDeal('p1');
+  const res = await g.acceptDeal('p1');
   assert.equal(res.settled, true);
   assert.equal(get(g.state, 'p0').gold, 4);
   assert.equal(get(g.state, 'p0').lands, 4);
@@ -885,36 +887,40 @@ test('an open deal settles only when it balances and everyone accepts', async ()
   assert.equal(g.state.deals.length, 1);
 });
 
-test('a deal that does not balance never settles', async () => {
+test('a deal a house cannot pay is refused at the table', async () => {
   const g = openTable();
-  await g.setDealTerms('p0', { offers: { gold: 3 }, takes: {} });
-  await g.setDealTerms('p1', { offers: {}, takes: { gold: 5 } });
-  await g.acceptDeal('p0');
-  const res = await g.acceptDeal('p1');
-  assert.equal(res.settled, false);
-  assert.match(res.reason, /Gold does not balance/);
-  assert.equal(get(g.state, 'p1').gold, g.state.tuning.startGold);
+  const res = await g.proposeDealTable('p0', [{ from: 'p0', to: 'p1', goods: { gold: 999 } }]);
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /does not have/);
+  assert.equal(g.state.dealTable.proposer, null, 'nothing goes on the table');
 });
 
-test('changing any term withdraws every acceptance', async () => {
+test('a fresh proposal resets acceptance to just the proposer', async () => {
   const g = openTable();
-  set(g.state, 'p0', { gold: 10 });
-  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
-  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
-  await g.acceptDeal('p0');
+  // A ring of gold — conserved, and enough parties that one accept does not
+  // settle it on its own.
+  await g.proposeDealTable('p0', [
+    { from: 'p0', to: 'p1', goods: { gold: 3 } },
+    { from: 'p1', to: 'p2', goods: { gold: 3 } },
+    { from: 'p2', to: 'p0', goods: { gold: 3 } },
+  ]);
+  await g.acceptDeal('p1');
+  assert.ok(g.state.dealTable.accepted.includes('p1'));
+  assert.ok(!g.state.dealTable.accepted.includes('p2'), 'p2 has not accepted');
+
+  // p0 puts up a different bargain; every earlier acceptance is void.
+  await g.proposeDealTable('p0', [
+    { from: 'p0', to: 'p1', goods: { gold: 4 } },
+    { from: 'p1', to: 'p0', goods: { lands: 1 } },
+  ]);
   assert.deepEqual(g.state.dealTable.accepted, ['p0']);
-  await g.setDealTerms('p0', { offers: { gold: 5 }, takes: {} });
-  assert.deepEqual(g.state.dealTable.accepted, [], 'the signature is void');
 });
 
 test('nobody can put up what they do not hold', async () => {
   const g = openTable();
-  await g.setDealTerms('p0', { offers: { gold: 999 }, takes: {} });
-  await g.setDealTerms('p1', { offers: {}, takes: { gold: 999 } });
-  await g.acceptDeal('p0');
-  const res = await g.acceptDeal('p1');
-  assert.equal(res.settled, false);
-  assert.match(res.reason, /has only/);
+  const res = await g.proposeDealTable('p0', [{ from: 'p0', to: 'p1', goods: { titles: ['herald'] } }]);
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /does not hold/);
 });
 
 test('a three-cornered pot settles in one move', async () => {
@@ -922,10 +928,14 @@ test('a three-cornered pot settles in one move', async () => {
   set(g.state, 'p0', { gold: 10 });
   set(g.state, 'p1', { lands: 3 });
   set(g.state, 'p2', { titles: ['herald'] });
-  await g.setDealTerms('p0', { offers: { gold: 8 }, takes: { titles: ['herald'] } });
-  await g.setDealTerms('p1', { offers: { lands: 1 }, takes: { gold: 8 } });
-  await g.setDealTerms('p2', { offers: { titles: ['herald'] }, takes: { lands: 1 } });
-  for (const pid of ['p0', 'p1', 'p2']) await g.acceptDeal(pid);
+  await g.proposeDealTable('p0', [
+    { from: 'p0', to: 'p1', goods: { gold: 8 } },
+    { from: 'p1', to: 'p2', goods: { lands: 1 } },
+    { from: 'p2', to: 'p0', goods: { titles: ['herald'] } },
+  ]);
+  await g.acceptDeal('p1');
+  const res = await g.acceptDeal('p2');
+  assert.equal(res.settled, true);
   assert.deepEqual(get(g.state, 'p0').titles, ['herald']);
   assert.equal(get(g.state, 'p1').gold, g.state.tuning.startGold + 8);
   assert.equal(get(g.state, 'p2').lands, g.state.tuning.startLands + 1);
@@ -935,30 +945,30 @@ test('a three-cornered pot settles in one move', async () => {
 test('deals shut once the orders are resolving', async () => {
   const g = makeGame();
   g.state.phase = 'resolve';
-  const res = await g.acceptDeal('p0');
-  assert.equal(res.settled, false);
+  const res = await g.proposeDealTable('p0', [{ from: 'p0', to: 'p1', goods: { gold: 1 } }]);
+  assert.equal(res.ok, false);
   assert.match(res.reason, /already resolving/);
 });
 
 test('rejecting or withdrawing sweeps the whole pot off the table', async () => {
   const g = openTable();
   set(g.state, 'p0', { gold: 10 });
-  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
-  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
-  await g.acceptDeal('p0');
+  const legs = [
+    { from: 'p0', to: 'p1', goods: { gold: 4 } },
+    { from: 'p1', to: 'p0', goods: { lands: 1 } },
+  ];
+  await g.proposeDealTable('p0', legs);
   // p1 has not decided; p1 rejects. The whole bargain is gone for everyone.
   await g.clearDeal('p1', 'rejected');
-  assert.deepEqual(g.state.dealTable.offers, {});
-  assert.deepEqual(g.state.dealTable.takes, {});
+  assert.equal(g.state.dealTable.proposer, null);
+  assert.deepEqual(g.state.dealTable.transfers, []);
   assert.deepEqual(g.state.dealTable.accepted, []);
 
-  // Rebuild, both accept-eligible, then a house that had accepted pulls out.
-  await g.setDealTerms('p0', { offers: { gold: 4 }, takes: {} });
-  await g.setDealTerms('p1', { offers: {}, takes: { gold: 4 } });
-  await g.acceptDeal('p0');
+  // Rebuild, then the proposer pulls it.
+  await g.proposeDealTable('p0', legs);
   await g.clearDeal('p0', 'withdrew');
-  assert.deepEqual(g.state.dealTable.offers, {});
-  assert.deepEqual(g.state.dealTable.takes, {});
+  assert.equal(g.state.dealTable.proposer, null);
+  assert.deepEqual(g.state.dealTable.transfers, []);
 });
 
 // ------------------------------------------------- precedence at court (§5)

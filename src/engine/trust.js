@@ -161,7 +161,9 @@ export function settleDeeds(state, emit = () => {}) {
  * a little credit; fleecing somebody costs a little, because they can count.
  */
 export function settleBargain(state, table, valueFor) {
-  const involved = [...new Set([...Object.keys(table.offers || {}), ...Object.keys(table.takes || {})])];
+  const involved = Array.isArray(table)
+    ? [...new Set(table)]
+    : [...new Set([...Object.keys(table.offers || {}), ...Object.keys(table.takes || {})])];
   if (involved.length < 2) return;
   const balances = involved.map((pid) => ({ pid, worth: valueFor(pid) }));
   const best = Math.max(...balances.map((b) => b.worth));

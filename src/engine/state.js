@@ -99,7 +99,7 @@ export function createGame(opts = {}) {
     promises: [], // undertakings declared, and whether they were kept
     goodwill: {}, // "from>to" -> number, gold gifted so far
     deals: [], // deals struck this game, for the chronicle
-    dealTable: { offers: {}, takes: {}, accepted: [] }, // the open pot
+    dealTable: { proposer: null, transfers: [], accepted: [] }, // the open proposal
     beats: [], // structured record of this round's resolution, for animation
     log: [],
     winner: null, // {playerIds:[], how:'usurp'|'inherit'}
@@ -250,7 +250,7 @@ export function viewFor(state, pid) {
     me: pid,
     commitments: {},
     // Deals are private to the two houses that struck them.
-    dealTable: JSON.parse(JSON.stringify(state.dealTable || { offers: {}, takes: {}, accepted: [] })),
+    dealTable: JSON.parse(JSON.stringify(state.dealTable || { proposer: null, transfers: [], accepted: [] })),
     // Trust and promises are public. A word given in open court is given in
     // open court, and everybody watches whether it holds.
     trust: { ...state.trust },

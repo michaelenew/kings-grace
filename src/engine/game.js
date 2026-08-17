@@ -338,30 +338,37 @@ export class Game {
 
   // ------------------------------------------------------ the open deal
 
-  /** Set a house's terms. Any change clears every acceptance (§3). */
-  async setDealTerms(pid, terms) {
-    const { setTerms } = await import('./dealtable.js');
-    setTerms(this.state, pid, terms);
-    this.emit('deal', `${this.nameOf(pid)} changes their terms; every acceptance is withdrawn.`, { quiet: true });
-    return this.state.dealTable;
-  }
-
-  async withdrawFromDeal(pid) {
-    const { withdraw } = await import('./dealtable.js');
-    withdraw(this.state, pid);
-    this.notify();
-    return this.state.dealTable;
+  /**
+   * One house builds the whole bargain and puts it to the table: who gives what
+   * to whom, in as many legs as it likes. Because every leg moves goods from one
+   * house to another the pot is conserved by construction — it always nets to
+   * zero. The proposer accepts by building it; every other house named then
+   * simply accepts or rejects. A fresh proposal replaces whatever stood before.
+   */
+  async proposeDealTable(pid, transfers) {
+    const dt = await import('./dealtable.js');
+    const { validateDeal, participants } = await import('./deals.js');
+    if (!this.dealsOpen) return { ok: false, reason: 'The orders are already resolving.' };
+    const legs = (transfers || []).filter((t) => t.from && t.to);
+    const problem = validateDeal(this.state, { transfers: legs });
+    if (problem) return { ok: false, reason: problem };
+    const parts = participants({ transfers: legs });
+    if (parts.length < 2) return { ok: false, reason: 'A bargain needs somebody on the other side.' };
+    dt.setProposal(this.state, pid, legs);
+    this.emit('deal', `${this.nameOf(pid)} puts a bargain to the table.`);
+    // Give the bots named in it a chance to answer straight away.
+    await this.inviteBotAcceptance();
+    return { ok: true };
   }
 
   /**
    * Sweep the open deal off the table entirely. A public, shared bargain dies
    * the moment any one house involved turns on it — an undecided house that
-   * rejects it, or a house that had accepted and pulls out. Both routes land
-   * here; the reason only colours the note in the chronicle.
+   * rejects it, or the proposer who pulls it. The reason only colours the note.
    */
   async clearDeal(pid, reason = 'rejected') {
     const { killTable } = await import('./dealtable.js');
-    const word = reason === 'withdrew' ? 'pulls out of' : 'rejects';
+    const word = reason === 'withdrew' ? 'pulls' : 'rejects';
     killTable(this.state);
     this.emit('deal', `${this.nameOf(pid)} ${word} the bargain; it comes off the table.`, { quiet: true });
     this.notify();
@@ -369,30 +376,32 @@ export class Game {
   }
 
   /**
-   * Accept the terms as they stand. When everyone involved has accepted and the
-   * pot balances, it settles at once.
+   * A house named in the open deal accepts it. When every house named has
+   * accepted and the deal is still payable, it settles at once.
    */
   async acceptDeal(pid) {
     const dt = await import('./dealtable.js');
+    const { settleDeal, dealBalance, summariseDeal, participants } = await import('./deals.js');
     if (!this.dealsOpen) return { settled: false, reason: 'The orders are already resolving.' };
-    dt.acceptTerms(this.state, pid);
-    const problem = dt.dealProblem(this.state, this.state.dealTable);
+    dt.acceptProposal(this.state, pid);
+    const problem = dt.proposalProblem(this.state);
     if (problem) { this.notify(); return { settled: false, reason: problem }; }
-    if (!dt.everyoneAccepted(this.state.dealTable)) {
-      const waiting = dt.dealParticipants(this.state.dealTable)
+    if (!dt.everyoneAccepted(this.state)) {
+      const waiting = dt.tableParticipants(this.state.dealTable)
         .filter((x) => !this.state.dealTable.accepted.includes(x))
         .map((x) => this.nameOf(x));
       this.notify();
       return { settled: false, waiting };
     }
-    // Read the balance before the goods move, then move them, then let the
-    // ledger record who came off well out of it.
-    const table = this.state.dealTable;
-    const worth = Object.fromEntries(dt.dealParticipants(table)
-      .map((x) => [x, dt.balanceFor(this.state, table, x)]));
-    const moved = dt.settleTable(this);
-    settleBargain(this.state, { offers: table.offers, takes: table.takes }, (x) => worth[x] ?? 0);
-    this.emit('deal', `A bargain settles — ${moved.join('; ')}.`);
+    // Read the balance before the goods move, settle, then let the ledger
+    // record who came off well out of it.
+    const deal = { transfers: this.state.dealTable.transfers };
+    const parts = participants(deal);
+    const worth = Object.fromEntries(parts.map((x) => [x, dealBalance(this.state, deal, x)]));
+    settleDeal(this, deal);
+    settleBargain(this.state, parts, (x) => worth[x] ?? 0);
+    this.emit('deal', `A bargain settles — ${summariseDeal(this.state, deal)}.`);
+    this.state.dealTable = dt.blankTable();
     return { settled: true };
   }
 
@@ -411,21 +420,30 @@ export class Game {
     return { ok: true };
   }
 
-  /** Bots look at the open pot and accept if it pays them. */
+  /**
+   * Bots named in the open deal look it over and accept if it pays them. A bot
+   * that refuses kills the whole thing, the same as a human rejecting.
+   */
   async inviteBotAcceptance() {
     const dt = await import('./dealtable.js');
     const table = this.state.dealTable;
-    if (dt.dealProblem(this.state, table)) return;
-    for (const pid of dt.dealParticipants(table)) {
+    if (!table.proposer) return;
+    if (dt.proposalProblem(this.state)) return;
+    const deal = { proposer: table.proposer, transfers: table.transfers };
+    for (const pid of dt.tableParticipants(table)) {
       const controller = this.controllers[pid];
-      if (!controller || controller.kind === 'human') continue;
-      if (table.accepted.includes(pid)) continue;
-      const answer = await this.ask(pid, {
-        type: 'dealTable',
-        balance: dt.balanceFor(this.state, table, pid),
-        table,
-      });
-      if (answer?.accept) await this.acceptDeal(pid);
+      // Only true bots decide on their own; humans and scripted seats are driven
+      // from outside (the UI's accept/reject, or a test).
+      if (controller?.kind !== 'ai') continue;
+      if (this.state.dealTable.accepted.includes(pid)) continue;
+      const answer = await this.ask(pid, { type: 'deal', deal, proposer: table.proposer });
+      if (answer === true || answer?.accept) {
+        await this.acceptDeal(pid);
+      } else {
+        await this.clearDeal(pid, 'rejected');
+        return;
+      }
+      if (!this.state.dealTable.proposer) return; // it settled or died
     }
   }
 

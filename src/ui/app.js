@@ -13,20 +13,21 @@ import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
 import { INTENTS, describeIntent } from '../engine/diplomacy.js';
 import { trustLabel } from '../engine/trust.js';
-import { emptyGoods } from '../engine/deals.js';
-import { el, mount, number, select } from './dom.js';
+import { describeGoods, participants, validateDeal } from '../engine/deals.js';
+import { el, mount, select } from './dom.js';
 import { sequenceCard, stageFor } from './sequence.js';
 import { referenceCard } from './reference.js';
-import { dealOffer } from './dealtable.js';
-import { describe as describeGoods } from '../engine/dealtable.js';
+import { dealOffer, dealBuilder, blankDraft } from './dealtable.js';
 import { playResolution } from './animate.js';
 
 const root = document.getElementById('app');
 
-// How long a transition beat holds when animation is on. Long enough to read
-// that the game moved, short enough not to nag — and always click-skippable.
-const INTERLUDE_MS = 850;
-const REVEAL_MS = 1300;
+// How long a transition beat holds when animation is on, then a brief fade as
+// it hands off to the next phase. Long enough to read that the game moved, and
+// always click-skippable.
+const INTERLUDE_MS = 2000;
+const REVEAL_MS = 2000;
+const FADE_MS = 320;
 
 const app = {
   game: null,
@@ -160,10 +161,17 @@ function startGame() {
       // short, self-clearing hold the player can click through.
       if (!app.settings.animate) return;
       await new Promise((resolve) => {
-        app.paused = { kind, beat, resolve, auto: true };
+        app.paused = { kind, beat, resolve, auto: true, fading: false };
         render();
         const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
-        app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, ms);
+        // Hold, then fade out, then hand off — so the beat lands softly rather
+        // than snapping to the next phase.
+        app.pauseTimer = setTimeout(() => {
+          if (!app.paused) return;
+          app.paused.fading = true;
+          render();
+          app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, FADE_MS);
+        }, ms);
       });
     },
   });
@@ -223,51 +231,42 @@ export function closePopover() {
   render();
 }
 
+/**
+ * The deal builder. One house lays out the whole bargain — every leg of who
+ * gives what to whom — and puts it to the table. Every leg moves goods from one
+ * house to another, so the pot is conserved by construction; the other houses
+ * named only have to accept or reject.
+ */
 function trayEditor() {
   if (!app.trayFor || !app.game) return null;
   const s = app.game.state;
   const pid = app.trayFor;
-  const me = s.players.find((p) => p.id === pid);
-  const table = s.dealTable;
-  const draft = app.trayDraft ??= {
-    offers: { ...emptyGoods(), ...(table.offers?.[pid] || {}) },
-    takes: { ...emptyGoods(), ...(table.takes?.[pid] || {}) },
-  };
+  const others = s.players.filter((p) => p.id !== pid).map((p) => p.id);
+  const draft = app.trayDraft ??= blankDraft(pid, others);
   const close = () => { app.trayFor = null; app.trayDraft = null; render(); };
+  const change = () => render();
 
-  const side = (label, key, limits) => el('div', { class: 'tray-side' }, [
-    el('h5', {}, label),
-    el('div', { class: 'goods' }, [
-      el('label', {}, [el('span', {}, 'gold'), number(draft[key].gold, 0, limits.gold, (v) => { draft[key].gold = v; render(); }, { class: 'narrow' })]),
-      el('label', {}, [el('span', {}, 'land'), number(draft[key].lands, 0, limits.lands, (v) => { draft[key].lands = v; render(); }, { class: 'narrow' })]),
-      el('label', {}, [el('span', {}, 'tokens'), number(draft[key].turncoat, 0, limits.turncoat, (v) => { draft[key].turncoat = v; render(); }, { class: 'narrow' })]),
-    ]),
-    el('div', { class: 'goods-titles' }, limits.titles.map((t) => el('button', {
-      class: `title-toggle${draft[key].titles.includes(t) ? ' on' : ''}`,
-      onclick: () => {
-        draft[key].titles = draft[key].titles.includes(t)
-          ? draft[key].titles.filter((x) => x !== t) : [...draft[key].titles, t];
-        render();
-      },
-    }, TITLE_BY_ID[t].name))),
-  ]);
+  const problem = validateDeal(s, { transfers: draft.transfers });
 
-  const othersTitles = s.players.filter((p) => p.id !== pid).flatMap((p) => p.titles);
   return el('div', { class: 'popover-backdrop', onclick: close }, [
     el('div', { class: 'popover wide', onclick: (e) => e.stopPropagation() }, [
-      el('h4', {}, `${me.name} — your side of the table`),
-      el('p', {}, 'Everything offered has to match everything taken, across all houses. Changing anything withdraws every acceptance.'),
-      el('div', { class: 'tray-sides' }, [
-        side('You offer', 'offers', { gold: me.gold, lands: me.lands, turncoat: me.turncoat, titles: me.titles }),
-        side('You take', 'takes', { gold: 99, lands: 99, turncoat: 9, titles: [...new Set(othersTitles)] }),
-      ]),
-      el('div', { class: 'deal-actions' }, [
-        el('button', {
-          class: 'primary',
-          onclick: async () => { await app.game.setDealTerms(pid, draft); close(); },
-        }, 'Put it on the table'),
-        el('button', { class: 'ghost', onclick: close }, 'Cancel'),
-      ]),
+      el('h4', {}, 'Put a bargain to the table'),
+      dealBuilder(s, pid, draft, {
+        onChange: change,
+        onPropose: async () => {
+          const res = await app.game.proposeDealTable(pid, draft.transfers);
+          if (res.ok) {
+            if (draft.intent) app.game.declarePromise(pid, { to: draft.intentOf, kind: draft.intent, subject: draft.intentSubject });
+            app.trayNote = null;
+            close();
+          } else {
+            app.trayNote = res.reason;
+            render();
+          }
+        },
+        onPass: close,
+        reply: problem ? { accepted: false, text: problem } : null,
+      }),
     ]),
   ]);
 }
@@ -429,7 +428,9 @@ function tableView(s) {
     // Seat one at the bottom (nearest the player) and go round from there.
     const angle = (Math.PI / 2) + (i * 2 * Math.PI) / n;
     const x = 50 + 41 * Math.cos(angle);
-    const y = 50 + 34 * Math.sin(angle);
+    // A touch more vertical spread than horizontal, so the top and bottom seats
+    // sit clear of the (taller-than-before) centre panel.
+    const y = 50 + 38 * Math.sin(angle);
     const wrap = el('div', { class: 'seat', dataset: { anchor: p.id } }, [
       playerCard(s, p),
       dealTray(s, p),
@@ -450,14 +451,6 @@ function dealTray(s, p) {
   if (app.humanSeats.has(p.id)) return null;
   const word = giveWordButton(s, p);
   return word ? el('div', { class: 'tray' }, [word]) : null;
-}
-
-/** Everyone with something on the open pot, either side. */
-function dealParties(table) {
-  const ids = new Set();
-  for (const [pid, g] of Object.entries(table?.offers || {})) if (!isEmptyGoods(g)) ids.add(pid);
-  for (const [pid, g] of Object.entries(table?.takes || {})) if (!isEmptyGoods(g)) ids.add(pid);
-  return [...ids];
 }
 
 /**
@@ -486,8 +479,6 @@ function giveWordButton(s, p) {
     ])),
   }, given ? 'Word given' : 'Give your word');
 }
-
-const isEmptyGoods = (g) => !g || (!g.gold && !g.lands && !g.turncoat && !(g.titles || []).length);
 
 /** The middle of the table: the last decree, the Crown's strength, the titles. */
 function centrePiece(s) {
@@ -529,71 +520,84 @@ function centrePiece(s) {
 }
 
 /**
- * The open bargain, in the middle of the table where everyone can see it. A deal
- * is public knowledge: each house's side of it and whether they have accepted
- * are on show to the whole court. Any human seat may propose one; a house that
- * is in a deal accepts it, rejects it (if still deciding), or — once accepted —
- * pulls out. Rejecting or pulling out sweeps the whole deal away for everybody.
+ * The open bargain, in the middle of the table for all to see. One house builds
+ * the whole thing — every leg of who gives what to whom — and puts it up; deals
+ * are public knowledge, so the legs and who has accepted are on show to the
+ * whole court. Every other house named just accepts or rejects; a rejection (or
+ * the proposer pulling it) sweeps the deal away for everybody.
  */
 function centreDeal(s) {
-  const table = s.dealTable || { offers: {}, takes: {}, accepted: [] };
-  const parts = dealParties(table);
+  const table = s.dealTable || { proposer: null, transfers: [], accepted: [] };
   const open = !!app.game?.dealsOpen;
   const humans = s.players.filter((p) => app.humanSeats.has(p.id));
+  const name = (id) => s.players.find((x) => x.id === id)?.name ?? id;
+  const firstName = (id) => name(id).split(' ')[0];
 
-  const acceptDeal = async (pid) => {
+  // No open proposal: an invitation to build one.
+  if (!table.proposer) {
+    const canOffer = open ? humans : [];
+    return el('div', { class: 'centre-deal' }, [
+      el('span', { class: 'crown-card-label' }, 'The bargaining table'),
+      el('p', { class: 'deal-empty' }, open
+        ? 'No bargain on the table. Build one — you set every side of it — and the rest of the court accepts or refuses.'
+        : 'The court is not bargaining now.'),
+      app.trayNote ? el('p', { class: 'deal-note' }, app.trayNote) : null,
+      ...canOffer.map((p) => el('button', {
+        class: 'deal-offer-btn',
+        onclick: () => { app.trayNote = null; app.trayFor = p.id; render(); },
+      }, humans.length > 1 ? `Offer a deal — ${firstName(p.id)}` : 'Offer a deal')),
+    ]);
+  }
+
+  const parts = participants({ transfers: table.transfers });
+  const me = viewingSeat(s);
+  const accept = async (pid) => {
     const res = await app.game.acceptDeal(pid);
     app.trayNote = res.settled ? 'The bargain is struck.'
-      : (res.reason || `Waiting on ${(res.waiting || []).join(', ')}.`);
-    await app.game.inviteBotAcceptance();
+      : res.reason ? res.reason
+        : `Waiting on ${(res.waiting || []).map(firstName).join(', ')}.`;
     render();
   };
+  const kill = async (pid, reason) => { await app.game.clearDeal(pid, reason); app.trayNote = null; render(); };
 
-  const rows = parts.map((pid) => {
-    const p = s.players.find((x) => x.id === pid);
-    if (!p) return null;
+  const legs = table.transfers.filter((t) => !isEmptyGoods(t.goods)).map((t) => el('div', { class: 'deal-legrow' }, [
+    el('span', { class: 'deal-leg-from' }, firstName(t.from)),
+    el('span', { class: 'deal-arrow' }, '→'),
+    el('span', { class: 'deal-leg-to' }, firstName(t.to)),
+    el('span', { class: 'deal-leg-goods' }, describeGoods(t.goods)),
+  ]));
+
+  const status = parts.map((pid) => {
     const accepted = table.accepted?.includes(pid);
-    const mine = app.humanSeats.has(pid);
-    return el('div', { class: `deal-party${accepted ? ' accepted' : ''}` }, [
-      el('div', { class: 'deal-party-head' }, [
-        el('b', {}, p.name),
-        el('span', { class: `deal-status ${accepted ? 'yes' : 'wait'}` }, accepted ? '✓ accepted' : 'deciding…'),
-      ]),
-      el('div', { class: 'deal-party-terms' }, [
-        el('span', {}, [el('b', {}, 'offers '), describeGoods(table.offers?.[pid] || {})]),
-        el('span', {}, [el('b', {}, 'takes '), describeGoods(table.takes?.[pid] || {})]),
-      ]),
-      mine && open ? el('div', { class: 'deal-party-actions' }, [
-        el('button', { class: 'ghost small', onclick: () => { app.trayFor = pid; render(); } }, 'Change'),
-        accepted
-          ? el('button', { class: 'ghost small', onclick: async () => { await app.game.clearDeal(pid, 'withdrew'); app.trayNote = null; render(); } }, 'Withdraw')
-          : el('span', { class: 'deal-decide' }, [
-            el('button', { class: 'small primary', onclick: () => acceptDeal(pid) }, 'Accept'),
-            el('button', { class: 'ghost small', onclick: async () => { await app.game.clearDeal(pid, 'rejected'); app.trayNote = null; render(); } }, 'Reject'),
-          ]),
-      ]) : null,
-    ]);
-  }).filter(Boolean);
+    const isProposer = pid === table.proposer;
+    return el('span', { class: `deal-chip ${accepted ? 'yes' : 'wait'}` },
+      `${firstName(pid)} ${isProposer ? '· proposer' : accepted ? '✓' : '…'}`);
+  });
 
-  // A house may only offer once it is not already on the table; a human at the
-  // table changes their side through the row above.
-  const canOffer = open ? humans.filter((p) => !parts.includes(p.id)) : [];
-  const offerBtns = canOffer.map((p) => el('button', {
-    class: 'deal-offer-btn',
-    onclick: () => { app.trayFor = p.id; render(); },
-  }, humans.length > 1 ? `Offer a deal — ${p.name.split(' ')[0]}` : 'Offer a deal'));
+  // What the viewing house can do about it.
+  let actions = null;
+  if (open && me && parts.includes(me.id)) {
+    const accepted = table.accepted?.includes(me.id);
+    if (me.id === table.proposer) {
+      actions = [el('button', { class: 'ghost small', onclick: () => kill(me.id, 'withdrew') }, 'Withdraw')];
+    } else {
+      actions = [
+        accepted ? el('span', { class: 'deal-you' }, '✓ you accepted') : el('button', { class: 'small primary', onclick: () => accept(me.id) }, 'Accept'),
+        el('button', { class: 'ghost small', onclick: () => kill(me.id, 'rejected') }, 'Reject'),
+      ];
+    }
+  }
 
   return el('div', { class: 'centre-deal' }, [
-    el('span', { class: 'crown-card-label' }, 'The bargaining table'),
-    parts.length
-      ? el('div', { class: 'deal-parties' }, rows)
-      : el('p', { class: 'deal-empty' }, open
-        ? 'No bargain on the table. Deals are struck in the open, for all to see.'
-        : 'The court is not bargaining now.'),
+    el('span', { class: 'crown-card-label' }, `${firstName(table.proposer)}’s bargain`),
+    el('div', { class: 'deal-legs' }, legs),
+    el('div', { class: 'deal-chips' }, status),
     app.trayNote ? el('p', { class: 'deal-note' }, app.trayNote) : null,
-    ...offerBtns,
+    actions ? el('div', { class: 'deal-party-actions' }, actions) : null,
   ]);
 }
+
+const isEmptyGoods = (g) => !g || (!g.gold && !g.lands && !g.turncoat && !(g.titles || []).length);
 
 function playerCard(s, p) {
   const band = bandOf(p.fealty);
@@ -809,7 +813,7 @@ function interludeCopy(s, paused) {
 
 function interludePanel(s) {
   const copy = interludeCopy(s, app.paused);
-  return el('section', { class: 'stage interlude', onclick: resume }, [
+  return el('section', { class: `stage interlude${app.paused.fading ? ' fading' : ''}`, onclick: resume }, [
     el('span', { class: 'interlude-eyebrow' }, copy.eyebrow),
     el('h2', { class: `interlude-title card-${app.paused.beat?.card || ''}` }, copy.title),
     copy.text ? el('p', { class: 'interlude-text' }, copy.text) : null,

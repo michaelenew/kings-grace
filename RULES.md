@@ -88,11 +88,16 @@ One loop, five steps:
 The one-line version: **petition → develop → support → attack.**
 
 **Deals are not a step.** The table is open from the moment the royal card turns
-until the orders begin resolving. Each house sets what it is **offering** and
-what it is **taking**; when everything offered matches everything taken across
-all houses, and every house involved has accepted, it all changes hands at once.
-Touching any term withdraws every acceptance, so nobody is ever holding an
-accept on terms they have not seen.
+until the orders begin resolving. **One house builds the whole bargain** — who
+gives what to whom, in as many legs as it likes, across any number of houses —
+and puts it to the table. Because every leg moves goods *from* one house *to*
+another, the pot is conserved by construction: it always nets to zero, nothing
+is created or destroyed. The proposal is **public**, sitting in the middle of
+the table for the whole court to read. The proposer accepts it by building it;
+**every other house named simply accepts or rejects**. When all of them accept
+it changes hands at once. A rejection by any of them — or the proposer pulling
+it — sweeps the whole thing off the table, and a fresh proposal replaces
+whatever stood before.
 
 Gold, land, titles and turncoat tokens move. Nothing anybody says they will
 *do* is part of a deal, and words bind nobody. Gold already committed to an
@@ -294,7 +299,7 @@ Edges the rules above do not settle, and how this implementation resolves them.
 - **You cannot claim a title you already hold**, and a claim moves the title without refunding anything to the house that loses it. The 2 gold goes to the Crown, not to them.
 - **A house that answered the levy still has an army for defense** in every sense except walls: support aimed at them still counts, and the Warden still adds its point. It is the gate that is unmanned, not the field.
 - **Turncoat tokens** are objects, not rights. An outlaw takes one each round they are in the shadow (up to two held at once), and anyone holding one may spend it in the whispers step. That is what makes them sellable.
-- **A deal is private** to the two houses that struck it. Third parties see that a bargain happened, not what was in it.
+- **A live bargain is public** — one house builds the whole thing and it sits in the open for the court to read and answer. Once it has **settled**, though, its contents pass out of common memory: third parties are left knowing that a bargain happened and who was in it, not the exact terms.
 - **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
 - **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
 
