@@ -84,10 +84,10 @@ a full point of crown weaker per house):
 
 | Players | Usurp | Inherit | Coups tried/game | Coups landed | Battles/game | Doctrine spread |
 |---|---|---|---|---|---|---|
-| 3 | 70% | 30% | 1.23 | 57% | 3.5 | 34pt |
-| 4 | 68% | 32% | 1.64 | 41% | 4.3 | 28pt |
-| 5 | 70% | 30% | 1.89 | 37% | 4.8 | 23pt |
-| 6 | 71% | 29% | 2.24 | 32% | 5.1 | 19pt |
+| 3 | 70% | 30% | 1.07 | 66% | 4.3 | 27pt |
+| 4 | 65% | 35% | 1.34 | 49% | 5.6 | 28pt |
+| 5 | 63% | 37% | 1.62 | 39% | 6.2 | 23pt |
+| 6 | 72% | 28% | 1.93 | 37% | 7.4 | 23pt |
 
 Two things shifted when defence and the throne were reworked (see Appendix B),
 and they are worth naming rather than smoothing over. **Usurpation is now the

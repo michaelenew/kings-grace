@@ -106,7 +106,10 @@ export class Game {
     while (!s.winner) {
       // Rents first: every house collects from its lands before the Crown acts,
       // so the purse you take into the royal card is the one you just filled.
-      this.incomeStep();
+      // The first round is the exception — you begin with exactly your starting
+      // gold, no phantom income on top of it, so "you start with X" is literally
+      // true and the opening is not quietly inflated.
+      if (s.round > 1) this.incomeStep();
       await this.crownFlip();
       if (s.winner) break;
       this.grantTurncoatTokens();

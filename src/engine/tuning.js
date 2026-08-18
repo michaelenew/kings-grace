@@ -12,9 +12,18 @@ export const RULES = {
   // ---- Setup ----------------------------------------------------------
   startLands: 3,
   /**
-   * Eight, not six, because the first flip can be a Tax and an outlaw owes 8.
-   * At six, a Tax on round one left a third of the table unable to afford any
-   * order at all — the first decision of the game was "you have no decision".
+   * What every house literally begins with. There is no income on the first
+   * round — rents are collected at the *start* of every round after the first —
+   * so this is exactly the purse you carry into the opening card, not a base
+   * that a hidden first harvest sits on top of. It was briefly effectively 12
+   * (8 plus a first income) once income moved to the top of the round, which,
+   * with the lower crown, let houses make a run at the throne too early; skipping
+   * the first income puts the opening back where it was.
+   *
+   * Eight, not six, because the first flip can be a Tax and an outlaw owes 8. At
+   * six, a Tax on round one left a third of the table unable to afford any order
+   * at all — the first decision of the game was "you have no decision". Exposed
+   * on the setup screen so a variant can raise or lower the opening.
    */
   startGold: 8,
   startFealty: 0,

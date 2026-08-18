@@ -75,7 +75,7 @@ commitment time.
 
 One loop, five steps:
 
-1. **Income.** The first thing every round, before the Crown acts: each land pays 1 gold, and a neutral gains +1. You carry the purse you just filled into the royal card, so a tax falls on rents already collected rather than on last round's leavings.
+1. **Income.** The first thing every round *after the first*, before the Crown acts: each land pays 1 gold, and a neutral gains +1. You carry the purse you just filled into the royal card, so a tax falls on rents already collected rather than on last round's leavings. **There is no income on round one** — you begin with exactly your starting gold, and the first card falls on that.
 2. **The royal card.** Reveal the top crown card and resolve it immediately (§6). Outlaws take their turncoat token now.
 3. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
 4. **Whispers**, in two beats with the table open between them:

@@ -43,6 +43,7 @@ const app = {
   trayDraft: null,
   trayNote: null,
   pauseTimer: null, // the auto-advance handle for a transition beat
+  stageMax: 0, // tallest the turn panel has needed, so it stops resizing
   dealDraft: null,
   dealReply: null,
   hoveredStage: null,
@@ -61,6 +62,7 @@ const app = {
 
 /** The knobs worth putting in front of a playtester, in the order they matter. */
 const KNOBS = [
+  { key: 'startGold', label: 'Starting gold', hint: 'What every house begins with. There is no income on round one, so this is exactly your opening purse.' },
   { key: 'crownBase', label: 'Crown strength constant' },
   { key: 'crownPerPlayer', label: 'Crown strength per player', negative: true },
   { key: 'commitCap', label: 'Most gold in one order', hint: 'Blank for no cap (the default). A cap makes a lone rich house unable to buy the throne.', nullable: true },
@@ -182,6 +184,7 @@ function startGame() {
   app.lastSeatShown = null;
   app.dealDraft = null;
   app.dealReply = null;
+  app.stageMax = 0;
   game.subscribe(() => render());
   render();
   game.run();
@@ -307,6 +310,25 @@ function render() {
   if (log) log.scrollTop = log.scrollHeight;
   const stage = root.querySelector('.round-table');
   if (stage) layoutTable(stage);
+  lockStageHeight();
+}
+
+/**
+ * The turn panel (top of the right column) changes with every phase — an order
+ * form one moment, a two-button levy the next — and the box jumping around made
+ * the turn hard to follow. Hold it at the tallest it has ever needed to be: we
+ * measure the natural height, keep the running maximum, and pin the box to it,
+ * so it only ever grows once (the first time a taller panel appears) and then
+ * stays put for the rest of the game.
+ */
+const STAGE_FLOOR = 440; // a sensible starting height before the tall panels appear
+function lockStageHeight() {
+  const panel = root.querySelector('.col-right .stage');
+  if (!panel) return;
+  panel.style.minHeight = '0px';
+  const natural = panel.offsetHeight;
+  app.stageMax = Math.max(app.stageMax, natural, STAGE_FLOOR);
+  panel.style.minHeight = `${app.stageMax}px`;
 }
 
 // Clearance kept around every box, and how oval the ring of seats is. The ring
