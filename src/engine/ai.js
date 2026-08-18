@@ -711,9 +711,11 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     }
 
     // Buy a turncoat token off an outlaw: a change of orders after the peek is
-    // worth real gold, and the shadow rarely has a better use for it.
+    // worth real gold, and the shadow rarely has a better use for it. Only if I
+    // hold none myself — a house can carry just one.
+    const tokCap = t.turncoatMax ?? 1;
     const tokenHolder = others.find((o) => o.turncoat > 0);
-    if (tokenHolder && me.gold >= 4 && traits.treachery > 0.7) {
+    if (tokenHolder && me.turncoat < tokCap && me.gold >= 4 && traits.treachery > 0.7) {
       return {
         transfers: [
           { from: me.id, to: tokenHolder.id, goods: { ...emptyGoods(), gold: 3 } },

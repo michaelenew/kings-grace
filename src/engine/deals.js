@@ -67,6 +67,24 @@ export function validateDeal(state, deal) {
     if (goods.lands > p.lands) return `${p.name} does not have ${goods.lands} lands to give.`;
     if (goods.turncoat > p.turncoat) return `${p.name} does not have that many turncoat tokens.`;
   }
+  // A turncoat token is a thing you hold one of, never a stack: no deal may
+  // leave a house holding more than the cap. (Net across the whole deal, so
+  // giving one and taking one in the same bargain is fine.)
+  const cap = state.tuning?.turncoatMax ?? 1;
+  const net = {};
+  for (const t of deal.transfers || []) {
+    const tok = Math.max(0, Math.floor(t.goods?.turncoat || 0));
+    if (!tok) continue;
+    net[t.from] = (net[t.from] || 0) - tok;
+    net[t.to] = (net[t.to] || 0) + tok;
+  }
+  for (const [pid, delta] of Object.entries(net)) {
+    if (delta <= 0) continue;
+    const p = playerById(state, pid);
+    if (p.turncoat + delta > cap) {
+      return `${p.name} already holds a turncoat token — a house can hold only ${cap === 1 ? 'one' : cap}.`;
+    }
+  }
   return null;
 }
 

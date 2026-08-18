@@ -64,7 +64,7 @@ commitment time.
 - **+1 gold** in every income step. Nobody's watching your fields.
 
 ### Outlaw (−2, −3) — the shadow
-- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. There is no limit on how many a house can *buy*, which is why a house at neutral standing can be sitting on several.
+- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. **A house may only ever hold one**, however it came by it — no bargain can leave you with a stack, so a token is always a thing you have or do not.
 - **A token is what buys the whispers** (§3), both of them: the right to spy in espionage and the right to reseal in duplicity. No token, no peek, whatever your standing — and a house that buys one may spy with it.
 - **Standing sets only how much you see.** With a token, an outlaw at −2 reads one thing; at −3, both a rival's order and the next royal card. A house above the outlaw band that holds a bought token reads one thing.
 - The crown taxes you at the highest rate (§6).
@@ -300,7 +300,7 @@ Edges the rules above do not settle, and how this implementation resolves them.
 - **A claim takes effect the moment it is made**, so if two houses cross a threshold in the same round, the second may claim what the first just took. Precedence decides who chooses first.
 - **You cannot claim a title you already hold**, and a claim moves the title without refunding anything to the house that loses it. The 2 gold goes to the Crown, not to them.
 - **A house that answered the levy still has an army for defense** in every sense except walls: support aimed at them still counts, and the Warden still adds its point. It is the gate that is unmanned, not the field.
-- **Turncoat tokens** are objects, not rights. An outlaw takes one each round they are in the shadow (up to two held at once), and anyone holding one may spend it in the whispers step. That is what makes them sellable.
+- **Turncoat tokens** are objects, not rights. An outlaw takes one each round it is in the shadow and holds none — a house may hold only one at a time — and anyone holding one may spend it in the whispers step. That is what makes them sellable.
 - **A live bargain is public** — one house builds the whole thing and it sits in the open for the court to read and answer. Once it has **settled**, though, its contents pass out of common memory: third parties are left knowing that a bargain happened and who was in it, not the exact terms.
 - **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
 - **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.
