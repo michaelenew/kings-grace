@@ -334,19 +334,19 @@ function lockStageHeight() {
 // Clearance kept around every box, and how oval the ring of seats is. The ring
 // is kept close to round (a hair wider than tall) so the table does not sprawl
 // horizontally; its size is driven by the boxes, not the other way round.
-const BOX_PAD = 16;
+const BOX_PAD = 8;
 const RING_ASPECT_X = 1.08;
 const RING_ASPECT_Y = 1.0;
-const TABLE_MARGIN = 24;
+const TABLE_MARGIN = 12;
 
 // The largest any single element on the table is ever expected to be. These are
 // static ceilings — a seat card with every row filled and its tray, and the
 // centre piece at its capped height — used to reserve a stable footprint so the
 // columns can be sized once and the table never has to grow into a neighbour.
 const MAX_SEAT_W = 200;
-const MAX_SEAT_H = 360;
+const MAX_SEAT_H = 300;
 const MAX_CENTRE_W = 248;
-const MAX_CENTRE_H = 420;
+const MAX_CENTRE_H = 380;
 
 /**
  * Pack `n` seat boxes and a centre box onto an ellipse so nothing overlaps.
@@ -426,11 +426,13 @@ function layoutTable(stage) {
   const centre = { hw: centreEl.offsetWidth / 2, hh: centreEl.offsetHeight / 2 };
   const nat = packRing(boxes, centre);
 
-  // Floor the container to the static worst case, then place the (unchanged,
-  // non-overlapping) ring centred inside it.
+  // Floor only the *width* to the static worst case, so the middle column
+  // reserves a stable share for the panels beside it. Height follows the real
+  // content — flooring it too made short tables reserve worst-case vertical
+  // space and spread out more than they needed to fit the page.
   const max = staticMaxTable();
   const W = Math.max(nat.W, max.W);
-  const H = Math.max(nat.H, max.H);
+  const H = nat.H;
   const cx = W / 2;
   const cy = H / 2;
   stage.style.width = `${Math.round(W)}px`;
