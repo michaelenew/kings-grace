@@ -331,6 +331,17 @@ function lockStageHeight() {
   panel.style.minHeight = `${app.stageMax}px`;
 }
 
+// Re-fit the table when the window changes size — the scale depends on the
+// column width and the viewport height, both of which move on a resize.
+let resizeRaf = null;
+window.addEventListener('resize', () => {
+  if (resizeRaf) cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => {
+    const stage = root.querySelector('.round-table');
+    if (stage) layoutTable(stage);
+  });
+});
+
 // Clearance kept around every box, and how oval the ring of seats is. The ring
 // is kept close to round (a hair wider than tall) so the table does not sprawl
 // horizontally; its size is driven by the boxes, not the other way round.
@@ -338,15 +349,6 @@ const BOX_PAD = 8;
 const RING_ASPECT_X = 1.08;
 const RING_ASPECT_Y = 1.0;
 const TABLE_MARGIN = 12;
-
-// The largest any single element on the table is ever expected to be. These are
-// static ceilings — a seat card with every row filled and its tray, and the
-// centre piece at its capped height — used to reserve a stable footprint so the
-// columns can be sized once and the table never has to grow into a neighbour.
-const MAX_SEAT_W = 200;
-const MAX_SEAT_H = 300;
-const MAX_CENTRE_W = 248;
-const MAX_CENTRE_H = 380;
 
 /**
  * Pack `n` seat boxes and a centre box onto an ellipse so nothing overlaps.
@@ -388,31 +390,13 @@ function packRing(boxes, centre) {
   return { pts, W: 2 * (maxX + TABLE_MARGIN), H: 2 * (maxY + TABLE_MARGIN) };
 }
 
-// The worst-case table footprint across every seat count, computed once from
-// the static ceilings above. This is the floor the live layout never drops
-// below, so the reserved space is the same whoever is at the table.
-let staticMaxCache = null;
-function staticMaxTable() {
-  if (staticMaxCache) return staticMaxCache;
-  let W = 0;
-  let H = 0;
-  for (let n = PLAYER_MIN; n <= PLAYER_MAX; n++) {
-    const boxes = Array.from({ length: n }, () => ({ hw: MAX_SEAT_W / 2, hh: MAX_SEAT_H / 2 }));
-    const { W: w, H: h } = packRing(boxes, { hw: MAX_CENTRE_W / 2, hh: MAX_CENTRE_H / 2 });
-    W = Math.max(W, w);
-    H = Math.max(H, h);
-  }
-  staticMaxCache = { W, H };
-  return staticMaxCache;
-}
-
 /**
  * Position the seats around the table by measurement, not by guesswork. Each
  * seat (the player card with its "give your word" tray) and the centre piece are
  * treated as boxes with a padding margin; the ring is grown until nothing
- * overlaps. The table is then floored to the static worst-case footprint so its
- * reserved size is stable, and scaled to fit its column so it can never spill
- * over the panels beside it.
+ * overlaps, giving the tightest table that fits. That table is then scaled to
+ * fit both its column's width and the height left in the viewport, so the whole
+ * thing lands on one screen and can never spill over the panels beside it.
  */
 function layoutTable(stage) {
   const fit = stage.parentElement; // .table-fit
@@ -426,12 +410,11 @@ function layoutTable(stage) {
   const centre = { hw: centreEl.offsetWidth / 2, hh: centreEl.offsetHeight / 2 };
   const nat = packRing(boxes, centre);
 
-  // Floor only the *width* to the static worst case, so the middle column
-  // reserves a stable share for the panels beside it. Height follows the real
-  // content — flooring it too made short tables reserve worst-case vertical
-  // space and spread out more than they needed to fit the page.
-  const max = staticMaxTable();
-  const W = Math.max(nat.W, max.W);
+  // The table is exactly as big as the tightest non-overlapping packing needs —
+  // no worst-case floor spreading it out. The .table-fit wrapper clips and the
+  // scale below keeps it inside its column, so a snug table cannot reach a
+  // panel, and the scale handles fitting it to the screen.
+  const W = nat.W;
   const H = nat.H;
   const cx = W / 2;
   const cy = H / 2;
@@ -442,12 +425,16 @@ function layoutTable(stage) {
     b.el.style.top = `${Math.round(cy + nat.pts[i].y)}px`;
   });
 
-  // Scale the whole table to fit the width of its column. A uniform scale can
-  // never introduce an overlap, and because the table is absolutely positioned
-  // inside .table-fit (which clips), it cannot reach the panels on either side.
-  // .table-fit is given the scaled height so the page reserves the right space.
-  const budget = fit.clientWidth || W;
-  const scale = Math.min(1, budget / W);
+  // Scale the whole table to fit BOTH the width of its column and the height
+  // left in the viewport, so the entire table lands on one screen. A uniform
+  // scale can never introduce an overlap, and because the table is absolutely
+  // positioned inside .table-fit (which clips), it cannot reach the panels on
+  // either side. .table-fit is given the scaled height so the page reserves the
+  // right space.
+  const budgetW = fit.clientWidth || W;
+  const top = fit.getBoundingClientRect().top; // where the table starts, in the viewport
+  const budgetH = Math.max(320, window.innerHeight - top - 12);
+  const scale = Math.min(1, budgetW / W, budgetH / H);
   stage.style.transform = `translateX(-50%) scale(${scale.toFixed(4)})`;
   fit.style.height = `${Math.round(H * scale)}px`;
 }

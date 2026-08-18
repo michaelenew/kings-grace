@@ -239,7 +239,7 @@ select.wide { width: 100%; }
 .centre {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: 248px;
-  max-height: 380px; overflow-y: auto;
+  max-height: 640px; overflow-y: auto;
   display: grid; gap: .35rem;
   text-align: center; z-index: 1;
 }
