@@ -21,6 +21,33 @@ import {
 
 const seatOrder = (state) => state.players.slice().sort((a, b) => a.seat - b.seat);
 
+/** "4 gold + 1 Marshal" — the parts of an attack, for the reckoning line. */
+function fmtSum(parts) {
+  const nz = (parts || []).filter((p) => p.value);
+  return nz.length ? nz.map((p) => `${p.value} ${p.label}`).join(' + ') : '0';
+}
+
+/**
+ * "2 walls − 2 turncoat + 1 Warden" — the parts of a defence, from a defenseOf
+ * result. The base wall is shown at full with the token's crack subtracted, so
+ * the reader can see exactly how a gate came apart.
+ */
+function defenceSum(d) {
+  const bits = [];
+  if (d.wallsDown) {
+    bits.push('no walls (army afield)');
+  } else {
+    const wall = d.base + d.ram;
+    let w = `${wall} wall${wall === 1 ? '' : 's'}`;
+    if (d.ram) w += ` − ${d.ram} turncoat`;
+    bits.push(w);
+  }
+  if (d.warden) bits.push(`${d.warden} Warden`);
+  if (d.pledge) bits.push(`${d.pledge} pledge`);
+  if (d.support) bits.push(`${d.support} support`);
+  return bits.join(' + ');
+}
+
 /**
  * Precedence at court, used wherever two houses want the same thing at the same
  * moment: the last land in the pool, a title two of them just qualified for, or
@@ -742,19 +769,31 @@ export class Game {
     return { toAttack, toDefense, toCrown };
   }
 
+  /**
+   * An attacker's strength, broken into its parts so the reckoning can be
+   * shown as it resolves. Returns { value, parts:[{label,value}] }.
+   */
   attackStrength(pid, support, targetIsCrown, bands, fealtyNow) {
     const s = this.state;
     const p = this.player(pid);
     const c = s.commitments[pid];
-    let str = c.gold + (support.toAttack[pid] || 0);
-    if (hasTitle(p, 'marshal')) str += s.tuning.marshalBonus;
+    const parts = [];
+    const gold = c.gold;
+    parts.push({ label: 'gold', value: gold });
+    const sup = support.toAttack[pid] || 0;
+    if (sup) parts.push({ label: 'support', value: sup });
+    let str = gold + sup;
+    if (hasTitle(p, 'marshal')) { str += s.tuning.marshalBonus; parts.push({ label: 'Marshal', value: s.tuning.marshalBonus }); }
     if (!targetIsCrown) {
       // §2 favorite punching-down bonus.
       const me = fealtyNow[pid];
       const them = fealtyNow[c.target];
-      if (bands[pid] === BAND.FAVORITE && them < me) str += Math.round(me * s.tuning.punchDownScale);
+      if (bands[pid] === BAND.FAVORITE && them < me) {
+        const punch = Math.round(me * s.tuning.punchDownScale);
+        if (punch) { str += punch; parts.push({ label: 'punch-down', value: punch }); }
+      }
     }
-    return str;
+    return { value: str, parts };
   }
 
   /**
@@ -800,7 +839,7 @@ export class Game {
     const contributions = conspirators.map((p) => ({
       pid: p.id,
       name: p.name,
-      value: this.attackStrength(p.id, support, true, null, null),
+      value: this.attackStrength(p.id, support, true, null, null).value,
     }));
     const pool = contributions.reduce((a, b) => a + b.value, 0);
     const defense = crownStrength(s) + support.toCrown;
@@ -815,7 +854,14 @@ export class Game {
     for (const c of contributions) {
       s.beats.push({ kind: 'attack', actor: c.pid, target: CROWN, strength: c.value, defense, won });
     }
-    this.emit('coup', `Usurpation! ${who} ${verb} on the throne: ${pool} against the Crown's ${defense}.`);
+    const atkStr = contributions.length > 1
+      ? `${contributions.map((c) => `${c.name.split(' ')[0]} ${c.value}`).join(' + ')} = ${pool}`
+      : `${pool}`;
+    const defStr = support.toCrown
+      ? `${crownStrength(s)} crown + ${support.toCrown} support = ${defense}`
+      : `the Crown's ${defense}`;
+    const tie = pool === defense ? (heraldConspirator ? ' — the Herald breaks the tie' : ' — the throne holds the tie') : '';
+    this.emit('coup', `Usurpation! ${who} ${verb} on the throne: ${atkStr} against ${defStr}${tie}.`);
 
     if (!won) {
       for (const p of conspirators) {
@@ -854,11 +900,10 @@ export class Game {
     const attacks = seatOrder(s)
       .map((p) => ({ p, c: s.commitments[p.id] }))
       .filter(({ c }) => c && c.order === ORDER.ATTACK && c.target !== CROWN)
-      .map(({ p, c }) => ({
-        attacker: p.id,
-        target: c.target,
-        strength: this.attackStrength(p.id, support, false, bands, fealtyNow),
-      }));
+      .map(({ p, c }) => {
+        const as = this.attackStrength(p.id, support, false, bands, fealtyNow);
+        return { attacker: p.id, target: c.target, strength: as.value, parts: as.parts };
+      });
     if (attacks.length === 0) return;
 
     const byTarget = new Map();
@@ -868,10 +913,7 @@ export class Game {
     }
 
     for (const [targetId, list] of byTarget) {
-      const base = this.defenseOf(targetId, support);
       const defender = this.player(targetId);
-      const pledgeNote = base.pledge ? ` (${base.pledge} of it thrown on the Crown’s mercy)` : '';
-      this.emit('combat', `${defender.name} defends with ${base.def}${base.wallsDown ? ' (walls down — their army is in the field)' : ''}${pledgeNote}.`);
 
       // Descending attack strength; equal strength is settled by precedence at
       // court, so who strikes first is a fact about the table rather than a
@@ -887,15 +929,18 @@ export class Game {
         // full wall.
         const d = this.defenseOf(targetId, support, a.attacker);
         const def = d.def;
-        // Public: the blow is landing in open court, so the whole table — the
-        // defender above all — must see that a turncoat token cracked the gate.
-        // Otherwise the log reads "defends with 2 … strikes with 2 and breaks
-        // through", which looks like the tie rule broke rather than the wall.
-        if (d.ram) this.emit('combat', `${attacker.name}’s turncoat token cracks ${defender.name}’s gate — walls fall ${d.ram} to ${def}.`);
         const heraldWinsTie = hasTitle(attacker, 'herald') && !hasTitle(defender, 'herald');
         const wins = a.strength > def || (a.strength === def && heraldWinsTie);
-        const wallsDown = base.wallsDown;
+        const wallsDown = d.wallsDown;
         s.beats.push({ kind: 'attack', actor: a.attacker, target: targetId, strength: a.strength, defense: def, won: wins });
+
+        // The reckoning, spelled out as it resolves: every part of the blow and
+        // every part of the gate it meets, so a "2 beats 2" is never a mystery —
+        // the token that cracked the wall, the pledge that raised it, the
+        // support on either side, are all on the record.
+        const tie = a.strength === def ? (heraldWinsTie ? ' — the Herald breaks the tie' : ' — the wall holds the tie') : '';
+        this.emit('combat', `Reckoning: ${attacker.name} attacks with ${fmtSum(a.parts)} = ${a.strength}, against ${defender.name}’s ${defenceSum(d)} = ${def}${tie}.`);
+
         if (!wins) {
           this.emit('combat', `${attacker.name} strikes at ${defender.name} with ${a.strength} and is thrown back.`);
           // A broken assault leaves its baggage on the field. The attacker's

@@ -755,7 +755,12 @@ function playerCard(s, p) {
     fealtyTrack(p.fealty),
     el('div', { class: 'resources' }, [
       resource('Lands', p.lands),
-      resource('Gold', p.gold),
+      // Show the purse people carry, not what is left after they sealed. Gold
+      // committed to an order is escrowed the moment it is sealed, but that is
+      // hidden information until the orders land — a counter that dropped by 7
+      // would tell the whole table you sealed 7 and are plainly not just
+      // farming. So until reveal, everyone shows their pre-commitment total.
+      resource('Gold', s.revealed ? p.gold : p.gold + (p.escrow || 0)),
       wallsResource(s, p),
     ]),
     statusRow(s, p),
