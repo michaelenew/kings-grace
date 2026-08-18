@@ -305,6 +305,93 @@ function render() {
   );
   const log = root.querySelector('.chronicle-scroll');
   if (log) log.scrollTop = log.scrollHeight;
+  const stage = root.querySelector('.round-table');
+  if (stage) layoutTable(stage);
+}
+
+// Clearance kept around every box, and how oval the ring of seats is. The ring
+// is kept close to round (a hair wider than tall) so the table does not sprawl
+// horizontally; its size is driven by the boxes, not the other way round.
+const BOX_PAD = 16;
+const RING_ASPECT_X = 1.08;
+const RING_ASPECT_Y = 1.0;
+const TABLE_MARGIN = 24;
+
+/**
+ * Position the seats around the table by measurement, not by guesswork. Each
+ * seat (the player card together with its "give your word" tray) and the centre
+ * piece are treated as boxes with a padding margin; the ring is grown until no
+ * two boxes overlap and none overlaps the centre, then the table is sized to
+ * hold them all. Nothing on the table can ever sit on top of anything else.
+ */
+function layoutTable(stage) {
+  const seatEls = [...stage.querySelectorAll('.seat')];
+  const centreEl = stage.querySelector('.centre');
+  if (!seatEls.length || !centreEl) return;
+  // If the boxes have not been laid out yet (zero size), try again next frame.
+  if (seatEls.some((el) => !el.offsetWidth) || !centreEl.offsetWidth) return;
+
+  const n = seatEls.length;
+  const boxes = seatEls.map((el) => ({ el, hw: el.offsetWidth / 2, hh: el.offsetHeight / 2 }));
+  const centre = { hw: centreEl.offsetWidth / 2, hh: centreEl.offsetHeight / 2 };
+  const angles = boxes.map((_, i) => (Math.PI / 2) + (i * 2 * Math.PI) / n);
+
+  // Two axis-aligned boxes clear each other if they are separated on either
+  // axis by more than half their combined extents plus the padding.
+  const hit = (ax, ay, ahw, ahh, bx, by, bhw, bhh) =>
+    Math.abs(ax - bx) < ahw + bhw + BOX_PAD && Math.abs(ay - by) < ahh + bhh + BOX_PAD;
+
+  const place = (k) => angles.map((a, i) => ({
+    x: RING_ASPECT_X * k * Math.cos(a),
+    y: RING_ASPECT_Y * k * Math.sin(a),
+    hw: boxes[i].hw,
+    hh: boxes[i].hh,
+  }));
+
+  const clear = (k) => {
+    const pts = place(k);
+    for (let i = 0; i < pts.length; i++) {
+      if (hit(pts[i].x, pts[i].y, pts[i].hw, pts[i].hh, 0, 0, centre.hw, centre.hh)) return false;
+      for (let j = i + 1; j < pts.length; j++) {
+        if (hit(pts[i].x, pts[i].y, pts[i].hw, pts[i].hh, pts[j].x, pts[j].y, pts[j].hw, pts[j].hh)) return false;
+      }
+    }
+    return true;
+  };
+
+  // Grow the ring until everything clears (monotone: moving boxes outward only
+  // ever increases their separation, so the first radius that clears is the
+  // tightest one that does).
+  let k = 60;
+  while (!clear(k) && k < 5000) k += 6;
+  const pts = place(k);
+
+  // Size the table to bound every box (plus a margin) and centre the ring.
+  let maxX = centre.hw;
+  let maxY = centre.hh;
+  for (const p of pts) {
+    maxX = Math.max(maxX, Math.abs(p.x) + p.hw);
+    maxY = Math.max(maxY, Math.abs(p.y) + p.hh);
+  }
+  const W = 2 * (maxX + TABLE_MARGIN);
+  const H = 2 * (maxY + TABLE_MARGIN);
+  const cx = W / 2;
+  const cy = H / 2;
+  stage.style.width = `${Math.round(W)}px`;
+  stage.style.height = `${Math.round(H)}px`;
+  boxes.forEach((b, i) => {
+    b.el.style.left = `${Math.round(cx + pts[i].x)}px`;
+    b.el.style.top = `${Math.round(cy + pts[i].y)}px`;
+  });
+
+  // If the computed table is wider than the space it sits in, scale the whole
+  // thing down uniformly — a uniform scale preserves the non-overlap — so it
+  // never spills out of its column or forces the page to scroll sideways.
+  const budget = stage.parentElement?.clientWidth || W;
+  const scale = W > budget ? budget / W : 1;
+  stage.style.transformOrigin = 'top center';
+  stage.style.transform = scale < 1 ? `scale(${scale.toFixed(4)})` : '';
+  stage.style.marginBottom = scale < 1 ? `${Math.round(-H * (1 - scale))}px` : '';
 }
 
 // ------------------------------------------------------------- setup screen
@@ -424,22 +511,14 @@ function topBar(s) {
 
 function tableView(s) {
   const n = s.players.length;
-  const seats = s.players.map((p, i) => {
-    // Seat one at the bottom (nearest the player) and go round from there.
-    const angle = (Math.PI / 2) + (i * 2 * Math.PI) / n;
-    const x = 50 + 41 * Math.cos(angle);
-    // Centre the ring a little below the middle and spread it vertically, so the
-    // top seat clears the table's top edge (its card was being cut off) while
-    // the top and bottom seats still sit clear of the taller centre panel.
-    const y = 53 + 37 * Math.sin(angle);
-    const wrap = el('div', { class: 'seat', dataset: { anchor: p.id } }, [
-      playerCard(s, p),
-      dealTray(s, p),
-    ]);
-    wrap.style.left = `${x}%`;
-    wrap.style.top = `${y}%`;
-    return wrap;
-  });
+  // Seat one at the bottom (nearest the player) and go round from there. The
+  // actual pixel positions are computed after mount by layoutTable(), which
+  // measures each seat box (card + its "give your word" tray) and the centre
+  // and spaces them so no two boxes ever overlap.
+  const seats = s.players.map((p) => el('div', { class: 'seat', dataset: { anchor: p.id } }, [
+    playerCard(s, p),
+    dealTray(s, p),
+  ]));
   return el('section', { class: `round-table seats-${n}` }, [...seats, centrePiece(s)]);
 }
 

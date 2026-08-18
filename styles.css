@@ -197,14 +197,14 @@ select.wide { width: 100%; }
 /* ---------------------------------------------------------- round table */
 
 .round-table {
+  /* Width and height are set by layoutTable() in app.js, which sizes the table
+     to exactly hold its measured boxes. Keep only the look here. */
   position: relative;
-  aspect-ratio: 1 / 0.9;
-  min-height: 840px;
-  margin-top: 22px;
+  margin: 22px auto 0;
   border-radius: 50% / 46%;
   border: 1px solid var(--line);
   background:
-    radial-gradient(ellipse at 50% 48%, #221c16 0%, #191410 62%, #14100d 100%);
+    radial-gradient(ellipse at 50% 50%, #221c16 0%, #191410 62%, #14100d 100%);
   box-shadow: inset 0 0 90px rgba(0,0,0,.6);
 }
 .player.seated {
@@ -227,8 +227,8 @@ select.wide { width: 100%; }
 
 .centre {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(33%, 250px);
-  max-height: 78%; overflow-y: auto;
+  width: 248px;
+  max-height: 420px; overflow-y: auto;
   display: grid; gap: .35rem;
   text-align: center; z-index: 1;
 }
@@ -339,7 +339,6 @@ select.wide { width: 100%; }
 @media (max-width: 1000px) {
   .layout { grid-template-columns: 1fr; }
   .col-right { grid-column: auto; }
-  .round-table { min-height: 640px; }
   .player.seated { width: 150px; }
 }
 
