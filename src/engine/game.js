@@ -104,6 +104,9 @@ export class Game {
       this.emit('setup', 'The court convenes. Four houses, one throne.');
     }
     while (!s.winner) {
+      // Rents first: every house collects from its lands before the Crown acts,
+      // so the purse you take into the royal card is the one you just filled.
+      this.incomeStep();
       await this.crownFlip();
       if (s.winner) break;
       this.grantTurncoatTokens();
@@ -117,7 +120,6 @@ export class Game {
       await this.pause({ kind: 'interlude', stage: 'resolve' });
       await this.resolvePhase();
       if (s.winner) break;
-      this.incomeStep();
       if (s.deck.length === 0) {
         this.inherit();
         break;

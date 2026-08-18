@@ -8,9 +8,9 @@ import { el } from './dom.js';
 export const STAGES = [
   {
     id: 'crownFlip',
-    label: 'The royal card',
-    phases: ['crownFlip'],
-    detail: 'Turn the top card of the royal deck and resolve it at once — a tax, a levy, or a favour paid to the loyal. A levy asks for your host: serve and you have no walls and no attack this round, refuse and you lose standing, and the whole table sees which you chose before anyone picks a target. Outlaws take their turncoat token now, and can bargain with it for the rest of the round.',
+    label: 'Rents & the royal card',
+    phases: ['income', 'crownFlip'],
+    detail: 'First every house collects its rents — a gold for each land it holds, and a gold more for a neutral — so the purse you carry into the round is the one you just filled. Then the top card of the royal deck is turned and resolved at once: a tax, a levy, or a favour paid to the loyal. A levy asks for your host: serve and you have no walls and no attack this round, refuse and you lose standing, and the whole table sees which you chose before anyone picks a target. Outlaws take their turncoat token now, and can bargain with it for the rest of the round.',
   },
   {
     id: 'commit',
@@ -33,7 +33,7 @@ export const STAGES = [
   {
     id: 'resolve',
     label: 'Reveal & resolve',
-    phases: ['resolve', 'income', 'gameOver'],
+    phases: ['resolve', 'gameOver'],
     detail: 'Orders flip at once and settle in a fixed order: appeals and pardons first, so standing — and therefore every band effect — is already updated when the swords land; then land is settled; then support is counted; then attacks resolve and spoils change hands. Income last.',
   },
 ];

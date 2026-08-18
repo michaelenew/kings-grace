@@ -43,16 +43,16 @@ export const RULES = {
   // cards remaining).
   //
   // The base is the floor the crown decays to as the deck empties — the
-  // strength of the throne on the last turn, when a coup is easiest. It was 7
-  // while a single order was capped at 9 gold; with the cap gone (see commitCap)
-  // a lone rich house could take the throne with a shrug, so the floor rose to
-  // 15. That is the "tame the threshold" number: high enough that a whim of a
-  // rally cannot topple a dominant house (usurpation sits near 50% at 15,
-  // against 58% at 13 and a coup-drowned 78% at the old 7), low enough that a
-  // real gold lead or a genuine coalition still takes the throne. It is
-  // delicate — a point of it swings usurpation several points — so measure
-  // before you move it.
-  crownBase: 15,
+  // strength of the throne on the last turn, when a coup is easiest. It sat at
+  // 15 to keep a lone rich house from buying the throne with a shrug once the
+  // gold cap came off, but that pushed the throne out of reach until the very
+  // last flip: nobody came within striking distance until the deck was spent.
+  // Eleven brings the coup window forward — with the steeper per-player term
+  // below, a house that breaks out early can make a real pass at the throne
+  // around round seven rather than only in the final round. It is delicate — a
+  // point of it swings usurpation several points — so measure before you move
+  // it.
+  crownBase: 11,
   /**
    * Negative, which reverses an earlier ruling that the crown must never weaken
    * as the table grows. That ruling was an instinct made before there was
@@ -61,16 +61,14 @@ export const RULES = {
    * A bigger table does not raise a bigger coalition — it raises a bigger
    * *crowd*. More houses are free to throw gold behind the throne, and the
    * largest-single-contributor rule gets harder to satisfy as a conspiracy
-   * grows, so coups are tried more often and land far less: 43% at three
-   * players against 18% at six. Left flat, usurpation ran 59% of games at three
-   * players and 32% at six — the same rules playing as two different games.
+   * grows, so coups are tried more often and land far less. Left flat,
+   * usurpation ran as two different games at the extremes of the table.
    *
-   * A quarter-point per house roughly halves that: 53/47/38/38 across three to
-   * six. It costs about a point of the enjoyment score at three players, where
-   * the coup-heavy game happened to score well, and buys consistency the
-   * enjoyment score does not measure because it scores each table size alone.
+   * A full point per house — up from a quarter — is what makes an early breakout
+   * plausible instead of a curiosity: the throne a four-house table has to beat
+   * starts lower and falls faster, so usurpation stops waiting for the last card.
    */
-  crownPerPlayer: -0.25,
+  crownPerPlayer: -1,
   /**
    * 1.4, not 1, because the deck is ten cards rather than twelve. What this
    * number really controls is how fast the coup window *opens*: at four players

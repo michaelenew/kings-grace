@@ -27,12 +27,14 @@ test('both roads to the throne stay live at four players', async () => {
   assert.ok(summary.inherit > 20, `inheritance should stay reachable, saw ${summary.inherit.toFixed(0)}%`);
 });
 
-// The deck is 10 cards. Games mostly run to the back half; they end a little
-// before the last card now that gold is uncapped and a coup can be forced
-// earlier — which is the point, so the floor is "most of the deck", not "all".
+// The deck is 10 cards. Games run into the back half but now end before the
+// last card on purpose: the crown starts lower and decays a full point per
+// house, so a breakout can force a coup around round seven or eight rather than
+// only on the final flip. The floor is "a real game happened", not "the deck
+// ran dry"; the ceiling still guards against a game that never ends.
 test('the game uses most of its crown deck', async () => {
   const { summary } = await at(4);
-  assert.ok(summary.meanRound > 8.5, `mean ending round ${summary.meanRound.toFixed(1)}, wanted past 8.5 of 10`);
+  assert.ok(summary.meanRound > 6.5, `mean ending round ${summary.meanRound.toFixed(1)}, wanted past 6.5 of 10`);
   assert.ok(summary.meanRound <= 10, `mean ending round ${summary.meanRound.toFixed(1)} exceeds the deck`);
 });
 
@@ -140,14 +142,19 @@ test('players are rarely reduced to attack-or-support', async () => {
 test('titles change hands', async () => {
   const { summary } = await at(4);
   const moved = summary.titlesTakenPerGame + summary.titlesClaimedPerGame;
-  assert.ok(moved > 1, `only ${moved.toFixed(2)} coronets change hands per game`);
+  // Around one a game. The floor dropped from 1 to 0.75 with the shorter game:
+  // a coup forced by round seven or eight simply leaves fewer rounds in which a
+  // coronet can move, but move it still does.
+  assert.ok(moved > 0.75, `only ${moved.toFixed(2)} coronets change hands per game`);
 });
 
 test('every table size from three to six plays a whole game', async () => {
   for (let players = PLAYER_MIN; players <= PLAYER_MAX; players++) {
     const { summary } = await at(players);
     assert.equal(summary.games, GAMES);
-    assert.ok(summary.meanRound > 8, `at ${players} players the game ends at round ${summary.meanRound.toFixed(1)}`);
+    // Shorter now on purpose: the coup window opens earlier, and the more houses
+    // at the table the faster the throne weakens, so big tables end soonest.
+    assert.ok(summary.meanRound > 6, `at ${players} players the game ends at round ${summary.meanRound.toFixed(1)}`);
     assert.ok(summary.usurp > 10, `at ${players} players usurpation is ${summary.usurp.toFixed(0)}% — that road is shut`);
     // Inheritance is thin at small tables and healthy at large ones; the
     // gradient is real, the floor is a regression guard.

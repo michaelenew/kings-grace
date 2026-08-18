@@ -26,25 +26,27 @@ is in Appendix B.
 
 Land income: **each land you hold pays 1 gold** in the income step.
 
-**Crown strength** at any moment = **round(15 − 0.25 × players + 1.4 × cards
-remaining)** — at four players, 28 down to 14 as the deck empties.
+**Crown strength** at any moment = **round(11 − 1 × players + 1.4 × cards
+remaining)** — at four players, 21 down to 7 as the deck empties.
+
+The base is the floor the throne decays to on the last flip. It sat at 15 to
+stop a lone rich house buying the crown with a shrug once gold was uncapped, but
+that pushed the throne out of reach until the very last card: nobody came within
+striking distance until the deck was spent. Eleven, with the steeper per-player
+term below, brings the coup window forward — a house that breaks out early can
+make a real pass at the throne around round seven, and usurpation stops waiting
+for the final round.
 
 The per-player term is negative, which **reverses** an earlier ruling in this
 document that the crown must never weaken as the table grows. That ruling was an
-instinct written before there was anything to measure it against.
-
-A bigger table does raise more houses who might rally to the throne — but it
-raises a bigger *crowd*, not a bigger coalition. More houses are free to throw
+instinct written before there was anything to measure it against. A bigger table
+raises a bigger *crowd*, not a bigger coalition: more houses are free to throw
 gold behind the Crown, and the largest-single-contributor rule gets harder to
 satisfy as a conspiracy grows, so coups are attempted more often at a big table
-and land far less: 39% of attempts succeed at three players against 21% at six.
-Left flat, usurpation took 59% of three-player games and 32% of six-player ones —
-the same rules playing as two different games, with three players a coup-heavy
-raider table.
-
-Easing the crown by a quarter-point a house roughly halves that. What it must
-never do is *grow* with the table: that shuts usurpation down to 1% at five and
-six players.
+and land less. A full point a house — up from a quarter — is what makes the
+early breakout plausible rather than a curiosity, and the throne a big table has
+to beat starts lower and falls faster. What the term must never do is *grow* with
+the table: that shuts usurpation down almost entirely at five and six players.
 
 ---
 
@@ -73,17 +75,17 @@ commitment time.
 
 One loop, five steps:
 
-1. **The royal card.** Reveal the top crown card and resolve it immediately (§6). Outlaws take their turncoat token now.
-2. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
-3. **Whispers**, in two beats with the table open between them:
+1. **Income.** The first thing every round, before the Crown acts: each land pays 1 gold, and a neutral gains +1. You carry the purse you just filled into the royal card, so a tax falls on rents already collected rather than on last round's leavings.
+2. **The royal card.** Reveal the top crown card and resolve it immediately (§6). Outlaws take their turncoat token now.
+3. **Sealed orders.** Every player secretly chooses one order (§4) and, where relevant, a hidden gold commitment and target.
+4. **Whispers**, in two beats with the table open between them:
    1. **Espionage** — a turncoat token is the right to *look*. Whoever holds one reads a rival's sealed order or the next royal card (both, at −3). Looking does not spend the token.
    2. **Duplicity** — a token is also the right to *change your own sealed order*. Whoever holds one now may spend it to reseal. The house that spied and the house that reseals need not be the same one, because a token can change hands between the beats.
-4. **Reveal & resolve.** All orders flip at once and settle in this **fixed order** — it is not the order they were sealed in, and it decides everything:
+5. **Reveal & resolve.** All orders flip at once and settle in this **fixed order** — it is not the order they were sealed in, and it decides everything:
    1. **Appeals and pardons** — standing moves *first*, so every band effect (a favorite's punch-down, an outlaw's exposure) is already updated before anything else is worked out. A pardoned outlaw is a neutral by the time the swords land.
    2. **Develop** — land settles next, so a field bought this round cannot be looted the same round.
    3. **Support** — counted toward whoever it was aimed at, now that we know who is attacking.
    4. **Attacks and spoils** — resolved last, against the standing, land and support already fixed above.
-5. **Income.** Each land pays 1 gold; neutrals gain +1.
 
 The one-line version: **petition → develop → support → attack.**
 
@@ -580,12 +582,14 @@ resolution it cracks the base wall. That gives the sole token-holder real
 leverage and makes a table thick with outlaws a table where walls, and the risk
 of being an outlaw, both matter less — the same mechanic diluting itself.
 
-**Gold is uncapped, and the crown floor rose to 15.** The commit cap let a lone
-dominant house lose its own coup to arithmetic — capped at 9 against three
-defenders piling on support. Uncapped, a house that has crushed the table can
-buy the throne, and a coalition still wins by rallying uncapped support behind
-one champion. The tall crown is what stops that being a whim: near 28 early,
-14 at the death.
+**Gold is uncapped.** The commit cap let a lone dominant house lose its own coup
+to arithmetic — capped at 9 against three defenders piling on support. Uncapped,
+a house that has crushed the table can buy the throne, and a coalition still wins
+by rallying uncapped support behind one champion. The crown floor sat at 15 to
+keep that from being a whim, but it also kept the throne out of reach until the
+last card; it has since come down to 11, with a steeper per-player term, so the
+coup window opens around round seven (§2) — near 21 early at four players, 7 at
+the death.
 
 The honest cost, measured: raiding the weak got expensive, so the raider lane
 fell and the climber lane rose, widening the doctrine spread; and coups land far

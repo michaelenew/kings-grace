@@ -79,20 +79,23 @@ coups a real gamble, nobody priced out of their own turn — and prints what eac
 configuration is failing at. `test/balance.test.js` asserts the shipped rules
 still hit those targets, so the claims below are checked rather than remembered.
 
-Where it lands, across 300 games per table size (gold uncapped, crown floor 15):
+Where it lands, across 300 games per table size (gold uncapped, crown floor 11,
+a full point of crown weaker per house):
 
 | Players | Usurp | Inherit | Coups tried/game | Coups landed | Battles/game | Doctrine spread |
 |---|---|---|---|---|---|---|
-| 3 | 52% | 48% | 0.80 | 66% | 4.8 | 33pt |
-| 4 | 47% | 53% | 0.97 | 48% | 6.3 | 36pt |
-| 5 | 52% | 48% | 1.16 | 45% | 7.0 | 28pt |
-| 6 | 52% | 48% | 1.25 | 42% | 8.2 | 23pt |
+| 3 | 70% | 30% | 1.23 | 57% | 3.5 | 34pt |
+| 4 | 68% | 32% | 1.64 | 41% | 4.3 | 28pt |
+| 5 | 70% | 30% | 1.89 | 37% | 4.8 | 23pt |
+| 6 | 71% | 29% | 2.24 | 32% | 5.1 | 19pt |
 
 Two things shifted when defence and the throne were reworked (see Appendix B),
-and they are worth naming rather than smoothing over. **Coups land far more
-often** — 42–66% of attempts against 20–40% before — because gold is uncapped:
-a coalition that commits, or a house with a real lead, now clears the crown
-instead of bouncing off a 9-gold ceiling. And **the doctrine spread widened**,
+and they are worth naming rather than smoothing over. **Usurpation is now the
+favoured road** — around 70% of games across the table — because the crown floor
+came down to 11 and weakens a full point per house, so the coup window opens
+around round seven instead of only on the last card. Coalitions and lone leaders
+alike clear the throne where they used to bounce off it. And **the doctrine
+spread widened**,
 because the same rework made raiding the weak expensive: the raider lane fell
 and the climber lane rose. Protecting the outlaw from being farmed for free and
 keeping every lane equally strong pull against each other; this is the current

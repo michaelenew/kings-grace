@@ -428,9 +428,10 @@ function tableView(s) {
     // Seat one at the bottom (nearest the player) and go round from there.
     const angle = (Math.PI / 2) + (i * 2 * Math.PI) / n;
     const x = 50 + 41 * Math.cos(angle);
-    // A touch more vertical spread than horizontal, so the top and bottom seats
-    // sit clear of the (taller-than-before) centre panel.
-    const y = 50 + 38 * Math.sin(angle);
+    // Centre the ring a little below the middle and spread it vertically, so the
+    // top seat clears the table's top edge (its card was being cut off) while
+    // the top and bottom seats still sit clear of the taller centre panel.
+    const y = 53 + 37 * Math.sin(angle);
     const wrap = el('div', { class: 'seat', dataset: { anchor: p.id } }, [
       playerCard(s, p),
       dealTray(s, p),

@@ -675,9 +675,18 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     })();
 
     // Can I take the throne if somebody lends me their sword?
+    //
+    // But only buy a sword from a house whose word I actually believe and who
+    // already thinks well of me. Paying gold up front for a coup is trust made
+    // material; handing it to a stranger who can simply pocket it and stand
+    // still is not a bargain, it is a gift — and nobody hands a rival coin for
+    // nothing. Early on, before any trust has been earned, this finds no one and
+    // the coup is sought with words alone (below) or with my own purse.
     const reachAlone = ceiling + marshal;
     if (reachAlone > 2 && reachAlone <= defense + 2) {
-      const allies = others.filter((o) => o.gold >= 2).sort((a, b) => b.gold - a.gold);
+      const allies = others
+        .filter((o) => o.gold >= 2 && believes(view, traits, o.id) > 0.55 && standingWith(view, o.id) > 0.4)
+        .sort((a, b) => b.gold - a.gold);
       for (const ally of allies) {
         const bribe = clamp(Math.ceil(ally.gold * 0.4), 1, Math.max(1, me.gold - 2));
         const theirSpend = Math.min(ally.gold, cap);
@@ -714,12 +723,17 @@ export function createAI(personality = 'schemer', doctrineName = 'opportunist', 
     }
 
     // Otherwise pay somebody else to bloody the runaway heir, since striking a
-    // favorite personally costs two standing.
+    // favorite personally costs two standing. The same discipline holds: only
+    // hire a house that already trails the heir (so the blow serves them too)
+    // and whose word I believe. A hireling with a shared grievance is buying its
+    // own ends with my coin; a stranger is just being handed money.
     const heir = others.slice().sort((a, b) => b.fealty - a.fealty)[0];
     if (heir && heir.fealty >= 2 && me.fealty < heir.fealty && me.gold >= 4) {
-      const hireling = others.filter((o) => o.id !== heir.id && o.gold >= 2).sort((a, b) => b.gold - a.gold)[0];
+      const hireling = others
+        .filter((o) => o.id !== heir.id && o.gold >= 2 && o.fealty < heir.fealty && believes(view, traits, o.id) > 0.55)
+        .sort((a, b) => b.gold - a.gold)[0];
       if (hireling) {
-        const gold = clamp(Math.floor(me.gold * 0.3), 1, 5);
+        const gold = clamp(Math.floor(me.gold * 0.25), 1, 4);
         return offer(hireling.id, gold, word);
       }
     }
