@@ -64,7 +64,7 @@ commitment time.
 - **+1 gold** in every income step. Nobody's watching your fields.
 
 ### Outlaw (−2, −3) — the shadow
-- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. **A house may only ever hold one**, however it came by it — no bargain can leave you with a stack, so a token is always a thing you have or do not.
+- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. **A house may only ever hold one**, however it came by it — no bargain can leave you with a stack, so a token is always a thing you have or do not. **A pardon forfeits it:** leaving the shadow for the King's grace leaves the shadow's coin behind, so you cannot dip into outlawry, pocket a token, and pardon your way back with the peek still in hand.
 - **A token is what buys the whispers** (§3), both of them: the right to spy in espionage and the right to reseal in duplicity. No token, no peek, whatever your standing — and a house that buys one may spy with it.
 - **Standing sets only how much you see.** With a token, an outlaw at −2 reads one thing; at −3, both a rival's order and the next royal card. A house above the outlaw band that holds a bought token reads one thing.
 - The crown taxes you at the highest rate (§6).
@@ -113,7 +113,7 @@ Each player picks exactly one per round:
 
 - **Attack [target]** — commit **as much gold as you hold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
 - **Support [target]** — commit **as much gold as you hold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies. **The target may be yourself**: digging in puts the gold on your own walls, and because orders are sealed nobody can see that you did it.
-- **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
+- **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0, and forfeit any turncoat token (the shadow's gift does not follow you back into grace). Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
 **There is no cap on what an order may carry.** Gold is uncapped, so a house

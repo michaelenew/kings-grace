@@ -702,8 +702,14 @@ export class Game {
       if (!c || c.order !== ORDER.PETITION) continue;
       if (bandsAtStart[p.id] === BAND.OUTLAW) {
         p.fealty = 0;
+        // Leaving the shadow means leaving the shadow's gifts behind. A pardon
+        // forfeits any turncoat token — otherwise a house could dip into
+        // outlawry for a round, pocket the token the shadow hands its outlaws,
+        // pardon back to respectability, and keep the peek without the exposure.
+        const hadToken = p.turncoat > 0;
+        p.turncoat = 0;
         s.beats.push({ kind: 'appeal', actor: p.id, pardon: true });
-        this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0.`);
+        this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0${hadToken ? ', forfeiting their turncoat token' : ''}.`);
       } else {
         p.fealty = clampFealty(p.fealty + 1);
         s.beats.push({ kind: 'appeal', actor: p.id, fealty: p.fealty });
