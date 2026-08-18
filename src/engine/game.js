@@ -887,7 +887,11 @@ export class Game {
         // full wall.
         const d = this.defenseOf(targetId, support, a.attacker);
         const def = d.def;
-        if (d.ram) this.emit('combat', `${attacker.name}’s turncoat token cracks ${defender.name}’s gate — walls fall ${d.ram}.`, { secret: true, pid: a.attacker });
+        // Public: the blow is landing in open court, so the whole table — the
+        // defender above all — must see that a turncoat token cracked the gate.
+        // Otherwise the log reads "defends with 2 … strikes with 2 and breaks
+        // through", which looks like the tie rule broke rather than the wall.
+        if (d.ram) this.emit('combat', `${attacker.name}’s turncoat token cracks ${defender.name}’s gate — walls fall ${d.ram} to ${def}.`);
         const heraldWinsTie = hasTitle(attacker, 'herald') && !hasTitle(defender, 'herald');
         const wins = a.strength > def || (a.strength === def && heraldWinsTie);
         const wallsDown = base.wallsDown;
