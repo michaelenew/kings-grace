@@ -29,11 +29,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Centre of a player's card (or the crown panel) in overlay coordinates. */
 function anchorFor(stage, id) {
   const sel = id === CROWN ? '[data-anchor="crown"]' : `[data-anchor="${id}"]`;
-  const node = document.querySelector(sel);
+  const node = stage.querySelector(sel) || document.querySelector(sel);
   if (!node) return null;
   const r = node.getBoundingClientRect();
   const host = stage.getBoundingClientRect();
-  return { x: r.left - host.left + r.width / 2, y: r.top - host.top + r.height / 2 };
+  // The table is scaled to fit its column, so getBoundingClientRect returns
+  // screen pixels (post-scale) — but the overlay lives inside the stage's own
+  // unscaled coordinate space. Divide the scale back out, or every badge lands
+  // off the card it belongs to.
+  const scale = (host.width / stage.offsetWidth) || 1;
+  return {
+    x: (r.left + r.width / 2 - host.left) / scale,
+    y: (r.top + r.height / 2 - host.top) / scale,
+  };
 }
 
 function svgEl(tag, attrs = {}) {
@@ -93,17 +101,17 @@ async function playSupport(layer, from, to, gold) {
   const dx = to.x - from.x; const dy = to.y - from.y;
   const len = Math.hypot(dx, dy) || 1;
   // Stop short of the target so the head reads as arriving, not overlapping.
-  const ex = to.x - (dx / len) * 46; const ey = to.y - (dy / len) * 46;
-  const sx = from.x + (dx / len) * 40; const sy = from.y + (dy / len) * 40;
+  const ex = to.x - (dx / len) * 58; const ey = to.y - (dy / len) * 58;
+  const sx = from.x + (dx / len) * 50; const sy = from.y + (dy / len) * 50;
   const line = svgEl('line', { x1: sx, y1: sy, x2: ex, y2: ey, class: 'support-line' });
   const nx = -dy / len; const ny = dx / len;
   const head = svgEl('line', {
-    x1: ex + nx * 9, y1: ey + ny * 9, x2: ex - nx * 9, y2: ey - ny * 9, class: 'support-head',
+    x1: ex + nx * 16, y1: ey + ny * 16, x2: ex - nx * 16, y2: ey - ny * 16, class: 'support-head',
   });
   svg.append(line, head);
   const coins = [];
   for (let i = 0; i < Math.min(3, Math.max(1, gold)); i++) {
-    const c = svgEl('circle', { r: 5, cx: sx, cy: sy, class: 'support-coin' });
+    const c = svgEl('circle', { r: 9, cx: sx, cy: sy, class: 'support-coin' });
     svg.append(c);
     coins.push(c);
   }
@@ -131,15 +139,15 @@ async function playAttack(layer, from, to, won) {
   const svg = svgEl('svg', { class: 'beat-svg' });
   const dx = to.x - from.x; const dy = to.y - from.y;
   const len = Math.hypot(dx, dy) || 1;
-  const sx = from.x + (dx / len) * 40; const sy = from.y + (dy / len) * 40;
-  const ex = to.x - (dx / len) * 48; const ey = to.y - (dy / len) * 48;
+  const sx = from.x + (dx / len) * 48; const sy = from.y + (dy / len) * 48;
+  const ex = to.x - (dx / len) * 58; const ey = to.y - (dy / len) * 58;
   // Bow the arc out to one side so two-way exchanges do not overlap.
-  const mx = (sx + ex) / 2 - dy / len * 46;
-  const my = (sy + ey) / 2 + dx / len * 46;
+  const mx = (sx + ex) / 2 - dy / len * 54;
+  const my = (sy + ey) / 2 + dx / len * 54;
   const id = `head-${Math.abs(Math.round(sx + sy))}-${Math.abs(Math.round(ex + ey))}`;
   const defs = svgEl('defs');
   const marker = svgEl('marker', {
-    id, viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto-start-reverse',
+    id, viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 9, markerHeight: 9, orient: 'auto-start-reverse',
   });
   marker.append(svgEl('path', { d: 'M0 0 L10 5 L0 10 z', class: won ? 'attack-head' : 'attack-head repelled' }));
   defs.append(marker);
