@@ -64,7 +64,7 @@ commitment time.
 - **+1 gold** in every income step. Nobody's watching your fields.
 
 ### Outlaw (−2, −3) — the shadow
-- **Turncoat token:** an outlaw takes one **turncoat token** as the round opens — but only when it holds none, so the shadow never hands you a second while you still hold the first. Tokens are goods, not rights: sell one at the deal table and the buyer gets everything it does. **A house may only ever hold one**, however it came by it — no bargain can leave you with a stack, so a token is always a thing you have or do not. **A pardon forfeits it:** leaving the shadow for the King's grace leaves the shadow's coin behind, so you cannot dip into outlawry, pocket a token, and pardon your way back with the peek still in hand.
+- **Turncoat token — the outlaw's duplicity, for one round:** being an outlaw *is* the token. Every outlaw has one afresh as the round opens, and it is spent, sold, or lost by the round's end — **nobody carries one into the next round**. It is not a possession you keep like gold or land; the "token" is only the bookkeeping that lets the duplicity be **sold**. Sell it at the deal table and the buyer wields it this round in your place; pardon your way out of outlawry and your round simply ends with nothing to carry. A house holds at most one at a time.
 - **A token is what buys the whispers** (§3), both of them: the right to spy in espionage and the right to reseal in duplicity. No token, no peek, whatever your standing — and a house that buys one may spy with it.
 - **Standing sets only how much you see.** With a token, an outlaw at −2 reads one thing; at −3, both a rival's order and the next royal card. A house above the outlaw band that holds a bought token reads one thing.
 - The crown taxes you at the highest rate (§6).
@@ -113,7 +113,7 @@ Each player picks exactly one per round:
 
 - **Attack [target]** — commit **as much gold as you hold** as troops. Target may be a player or the Crown. Committed gold is spent win or lose.
 - **Support [target]** — commit **as much gold as you hold**. Adds that gold to the target's attack *or* defense this round (whichever situation arises). Supporting the Crown's defense adds gold only — no fealty bonus applies. **The target may be yourself**: digging in puts the gold on your own walls, and because orders are sealed nobody can see that you did it.
-- **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0, and forfeit any turncoat token (the shadow's gift does not follow you back into grace). Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
+- **Appeal** — pay 2 gold, gain +1 fealty. **Band read for outlaws:** an outlaw's Appeal is a **pardon** — pay 3 gold, jump directly to fealty 0. Because appeals resolve before attacks, a pardoned outlaw is no longer an outlaw when the swords land.
 - **Develop** — pay 3 gold, take one land from the neutral pool (if any remain).
 
 **There is no cap on what an order may carry.** Gold is uncapped, so a house
@@ -300,7 +300,7 @@ Edges the rules above do not settle, and how this implementation resolves them.
 - **A claim takes effect the moment it is made**, so if two houses cross a threshold in the same round, the second may claim what the first just took. Precedence decides who chooses first.
 - **You cannot claim a title you already hold**, and a claim moves the title without refunding anything to the house that loses it. The 2 gold goes to the Crown, not to them.
 - **A house that answered the levy still has an army for defense** in every sense except walls: support aimed at them still counts, and the Warden still adds its point. It is the gate that is unmanned, not the field.
-- **Turncoat tokens** are objects, not rights. An outlaw takes one each round it is in the shadow and holds none — a house may hold only one at a time — and anyone holding one may spend it in the whispers step. That is what makes them sellable.
+- **A turncoat token is the outlaw's duplicity for the round, not an object you keep.** Every outlaw has one each round it is in the shadow; it is used, sold, or lost by the round's end and never carried forward. Anyone holding one may spend it in the whispers step — which is what makes it sellable, and a house holds at most one at a time.
 - **A live bargain is public** — one house builds the whole thing and it sits in the open for the court to read and answer. Once it has **settled**, though, its contents pass out of common memory: third parties are left knowing that a bargain happened and who was in it, not the exact terms.
 - **The size of a sealed commitment is hidden**, not just the order — otherwise players asked later in the round could read everyone's war chest off the board.
 - **Simultaneous claims on something scarce are shuffled**, not resolved in seat order: two players crossing +2 in the same round, or two Develops for one remaining land. The Herald still goes first.

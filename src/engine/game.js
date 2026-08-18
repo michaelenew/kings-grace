@@ -150,6 +150,10 @@ export class Game {
       await this.pause({ kind: 'interlude', stage: 'resolve' });
       await this.resolvePhase();
       if (s.winner) break;
+      // Duplicity is a thing of the round, not a thing you own. Whatever anyone
+      // held — the outlaw who never used it, the house that bought it — expires
+      // now; nobody carries a turncoat token into the next round.
+      this.expireTurncoats();
       if (s.deck.length === 0) {
         this.inherit();
         break;
@@ -326,8 +330,12 @@ export class Game {
   }
 
   /**
-   * Outlaws take their token as the round opens, not at the whispers step, so
-   * they have the whole round to bargain with it.
+   * A turncoat token is not a thing you own — it is the *duplicity of being an
+   * outlaw*, a capability that lasts one round. Every outlaw has it afresh as the
+   * round opens (the token is only the bookkeeping that lets it be sold), and it
+   * expires at the round's end whether it was used, sold, or left idle. So this
+   * grants each outlaw their duplicity for the round; expireTurncoats() takes it
+   * back from everyone once the swords are down.
    */
   grantTurncoatTokens() {
     const s = this.state;
@@ -337,6 +345,11 @@ export class Game {
       p.turncoat += 1;
       this.emit('turncoat', `${p.name} takes a turncoat token.`);
     }
+  }
+
+  /** End of round: the round's duplicity expires for everyone who held it. */
+  expireTurncoats() {
+    for (const p of this.state.players) p.turncoat = 0;
   }
 
   /**
@@ -702,14 +715,8 @@ export class Game {
       if (!c || c.order !== ORDER.PETITION) continue;
       if (bandsAtStart[p.id] === BAND.OUTLAW) {
         p.fealty = 0;
-        // Leaving the shadow means leaving the shadow's gifts behind. A pardon
-        // forfeits any turncoat token — otherwise a house could dip into
-        // outlawry for a round, pocket the token the shadow hands its outlaws,
-        // pardon back to respectability, and keep the peek without the exposure.
-        const hadToken = p.turncoat > 0;
-        p.turncoat = 0;
         s.beats.push({ kind: 'appeal', actor: p.id, pardon: true });
-        this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0${hadToken ? ', forfeiting their turncoat token' : ''}.`);
+        this.emit('petition', `${p.name} buys a pardon for ${s.tuning.pardonCost} gold and returns to fealty 0.`);
       } else {
         p.fealty = clampFealty(p.fealty + 1);
         s.beats.push({ kind: 'appeal', actor: p.id, fealty: p.fealty });

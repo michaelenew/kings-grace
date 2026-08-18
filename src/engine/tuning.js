@@ -37,13 +37,12 @@ export const RULES = {
    */
   neutralPerPlayer: 3,
   /**
-   * The most turncoat tokens a house may ever *hold* — a hard cap, whether the
-   * token came from the shadow or was bought at the deal table. An outlaw takes
-   * one at the start of a round only when it holds none, and no bargain may
-   * leave a house holding more than this. One: a token is a thing you have or
-   * do not, used within the round it is earned (peek, then change or sell); a
-   * banked stack was only ever confusing, and "you only ever hold one" is the
-   * rule players expect.
+   * The most turncoat tokens a house may hold at once. One — because a token is
+   * not a possession you accumulate, it is the *duplicity of being an outlaw*
+   * for a single round: granted afresh to every outlaw as the round opens, and
+   * expired for everyone once the swords are down (never carried forward). The
+   * "token" is only the bookkeeping that lets that duplicity be sold, so no
+   * bargain may leave a house holding more than one.
    */
   turncoatMax: 1,
   deck: { tax: 3, levy: 4, favor: 3 },

@@ -809,9 +809,9 @@ function statusRow(s, p) {
     chips.push(el('button', {
       class: 'status-chip token',
       onclick: () => openPopover('Turncoat token', [
-        `${p.name} holds a turncoat token.`,
+        `${p.name} holds this round’s turncoat token.`,
         'A turncoat token does two things across the whispers step. In espionage, holding one lets you read a rival’s sealed order or the next royal card — both at −3. In duplicity, spending one lets you change your own sealed order. Looking does not spend it; changing does.',
-        `An outlaw takes one as the round opens, and only when it holds none. Tokens are goods: sell one at the deal table and the buyer gets its eyes and its change. A house may only ever hold one, however it came by it — no bargain can leave you with a stack.`,
+        `It is not a thing you keep — it is the duplicity of being an outlaw, and it lasts one round. Every outlaw has one afresh as the round opens; it is spent, sold, or lost by the round’s end and never carried forward. Selling it at the deal table hands the buyer its eyes and its change for this round. A house holds at most one.`,
       ].join('\n\n')),
     }, 'turncoat token'));
   }
