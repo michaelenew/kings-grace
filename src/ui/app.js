@@ -317,37 +317,31 @@ const RING_ASPECT_X = 1.08;
 const RING_ASPECT_Y = 1.0;
 const TABLE_MARGIN = 24;
 
+// The largest any single element on the table is ever expected to be. These are
+// static ceilings — a seat card with every row filled and its tray, and the
+// centre piece at its capped height — used to reserve a stable footprint so the
+// columns can be sized once and the table never has to grow into a neighbour.
+const MAX_SEAT_W = 200;
+const MAX_SEAT_H = 360;
+const MAX_CENTRE_W = 248;
+const MAX_CENTRE_H = 420;
+
 /**
- * Position the seats around the table by measurement, not by guesswork. Each
- * seat (the player card together with its "give your word" tray) and the centre
- * piece are treated as boxes with a padding margin; the ring is grown until no
- * two boxes overlap and none overlaps the centre, then the table is sized to
- * hold them all. Nothing on the table can ever sit on top of anything else.
+ * Pack `n` seat boxes and a centre box onto an ellipse so nothing overlaps.
+ * Returns the ring points (offsets from the centre) and the table size needed
+ * to hold them. Boxes are {hw, hh} half-extents.
  */
-function layoutTable(stage) {
-  const seatEls = [...stage.querySelectorAll('.seat')];
-  const centreEl = stage.querySelector('.centre');
-  if (!seatEls.length || !centreEl) return;
-  // If the boxes have not been laid out yet (zero size), try again next frame.
-  if (seatEls.some((el) => !el.offsetWidth) || !centreEl.offsetWidth) return;
-
-  const n = seatEls.length;
-  const boxes = seatEls.map((el) => ({ el, hw: el.offsetWidth / 2, hh: el.offsetHeight / 2 }));
-  const centre = { hw: centreEl.offsetWidth / 2, hh: centreEl.offsetHeight / 2 };
+function packRing(boxes, centre) {
+  const n = boxes.length;
   const angles = boxes.map((_, i) => (Math.PI / 2) + (i * 2 * Math.PI) / n);
-
-  // Two axis-aligned boxes clear each other if they are separated on either
-  // axis by more than half their combined extents plus the padding.
   const hit = (ax, ay, ahw, ahh, bx, by, bhw, bhh) =>
     Math.abs(ax - bx) < ahw + bhw + BOX_PAD && Math.abs(ay - by) < ahh + bhh + BOX_PAD;
-
   const place = (k) => angles.map((a, i) => ({
     x: RING_ASPECT_X * k * Math.cos(a),
     y: RING_ASPECT_Y * k * Math.sin(a),
     hw: boxes[i].hw,
     hh: boxes[i].hh,
   }));
-
   const clear = (k) => {
     const pts = place(k);
     for (let i = 0; i < pts.length; i++) {
@@ -358,40 +352,80 @@ function layoutTable(stage) {
     }
     return true;
   };
-
   // Grow the ring until everything clears (monotone: moving boxes outward only
-  // ever increases their separation, so the first radius that clears is the
-  // tightest one that does).
+  // ever increases their separation, so the first radius that clears is tightest).
   let k = 60;
   while (!clear(k) && k < 5000) k += 6;
   const pts = place(k);
-
-  // Size the table to bound every box (plus a margin) and centre the ring.
   let maxX = centre.hw;
   let maxY = centre.hh;
   for (const p of pts) {
     maxX = Math.max(maxX, Math.abs(p.x) + p.hw);
     maxY = Math.max(maxY, Math.abs(p.y) + p.hh);
   }
-  const W = 2 * (maxX + TABLE_MARGIN);
-  const H = 2 * (maxY + TABLE_MARGIN);
+  return { pts, W: 2 * (maxX + TABLE_MARGIN), H: 2 * (maxY + TABLE_MARGIN) };
+}
+
+// The worst-case table footprint across every seat count, computed once from
+// the static ceilings above. This is the floor the live layout never drops
+// below, so the reserved space is the same whoever is at the table.
+let staticMaxCache = null;
+function staticMaxTable() {
+  if (staticMaxCache) return staticMaxCache;
+  let W = 0;
+  let H = 0;
+  for (let n = PLAYER_MIN; n <= PLAYER_MAX; n++) {
+    const boxes = Array.from({ length: n }, () => ({ hw: MAX_SEAT_W / 2, hh: MAX_SEAT_H / 2 }));
+    const { W: w, H: h } = packRing(boxes, { hw: MAX_CENTRE_W / 2, hh: MAX_CENTRE_H / 2 });
+    W = Math.max(W, w);
+    H = Math.max(H, h);
+  }
+  staticMaxCache = { W, H };
+  return staticMaxCache;
+}
+
+/**
+ * Position the seats around the table by measurement, not by guesswork. Each
+ * seat (the player card with its "give your word" tray) and the centre piece are
+ * treated as boxes with a padding margin; the ring is grown until nothing
+ * overlaps. The table is then floored to the static worst-case footprint so its
+ * reserved size is stable, and scaled to fit its column so it can never spill
+ * over the panels beside it.
+ */
+function layoutTable(stage) {
+  const fit = stage.parentElement; // .table-fit
+  const seatEls = [...stage.querySelectorAll('.seat')];
+  const centreEl = stage.querySelector('.centre');
+  if (!fit || !seatEls.length || !centreEl) return;
+  // If the boxes have not been laid out yet (zero size), try again next frame.
+  if (seatEls.some((el) => !el.offsetWidth) || !centreEl.offsetWidth) return;
+
+  const boxes = seatEls.map((el) => ({ el, hw: el.offsetWidth / 2, hh: el.offsetHeight / 2 }));
+  const centre = { hw: centreEl.offsetWidth / 2, hh: centreEl.offsetHeight / 2 };
+  const nat = packRing(boxes, centre);
+
+  // Floor the container to the static worst case, then place the (unchanged,
+  // non-overlapping) ring centred inside it.
+  const max = staticMaxTable();
+  const W = Math.max(nat.W, max.W);
+  const H = Math.max(nat.H, max.H);
   const cx = W / 2;
   const cy = H / 2;
   stage.style.width = `${Math.round(W)}px`;
   stage.style.height = `${Math.round(H)}px`;
   boxes.forEach((b, i) => {
-    b.el.style.left = `${Math.round(cx + pts[i].x)}px`;
-    b.el.style.top = `${Math.round(cy + pts[i].y)}px`;
+    b.el.style.left = `${Math.round(cx + nat.pts[i].x)}px`;
+    b.el.style.top = `${Math.round(cy + nat.pts[i].y)}px`;
   });
 
-  // If the computed table is wider than the space it sits in, scale the whole
-  // thing down uniformly — a uniform scale preserves the non-overlap — so it
-  // never spills out of its column or forces the page to scroll sideways.
-  const budget = stage.parentElement?.clientWidth || W;
-  const scale = W > budget ? budget / W : 1;
-  stage.style.transformOrigin = 'top center';
-  stage.style.transform = scale < 1 ? `scale(${scale.toFixed(4)})` : '';
-  stage.style.marginBottom = scale < 1 ? `${Math.round(-H * (1 - scale))}px` : '';
+  // Scale the whole table to fit the width of its column. A uniform scale can
+  // never introduce an overlap, and because the table is absolutely positioned
+  // inside .table-fit (which clips), it cannot reach the panels on either side.
+  // .table-fit is given the scaled height so the page reserves the right space.
+  const budget = fit.clientWidth || W;
+  const scale = Math.min(1, budget / W);
+  stage.style.transform = `translateX(-50%) scale(${scale.toFixed(4)})`;
+  fit.style.height = `${Math.round(H * scale)}px`;
 }
 
 // ------------------------------------------------------------- setup screen
@@ -519,7 +553,11 @@ function tableView(s) {
     playerCard(s, p),
     dealTray(s, p),
   ]));
-  return el('section', { class: `round-table seats-${n}` }, [...seats, centrePiece(s)]);
+  // .table-fit is the fixed slot in the column; the round table is absolutely
+  // positioned inside it and scaled to fit, so it can never reach the panels.
+  return el('div', { class: 'table-fit' }, [
+    el('section', { class: `round-table seats-${n}` }, [...seats, centrePiece(s)]),
+  ]);
 }
 
 /**

@@ -123,7 +123,7 @@ select.wide { width: 100%; }
 
 .layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1.7fr) minmax(0, 0.92fr);
+  grid-template-columns: 280px minmax(0, 2fr) minmax(0, 0.82fr);
   gap: 1rem;
   padding: 1rem;
   align-items: start;
@@ -196,11 +196,22 @@ select.wide { width: 100%; }
 
 /* ---------------------------------------------------------- round table */
 
-.round-table {
-  /* Width and height are set by layoutTable() in app.js, which sizes the table
-     to exactly hold its measured boxes. Keep only the look here. */
+/* The fixed slot in the middle column. It fills the column width and clips, so
+   whatever the table scales to, it stays inside its own space. Its height is set
+   by layoutTable() to the scaled table height, reserving the right room. */
+.table-fit {
   position: relative;
-  margin: 22px auto 0;
+  width: 100%;
+  margin-top: 22px;
+  overflow: hidden;
+}
+.round-table {
+  /* Absolutely positioned inside .table-fit and scaled to fit by layoutTable()
+     in app.js, which also sizes it to hold its measured boxes. Look only here. */
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform-origin: top center;
   border-radius: 50% / 46%;
   border: 1px solid var(--line);
   background:
