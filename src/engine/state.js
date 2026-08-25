@@ -228,6 +228,12 @@ export function viewFor(state, pid) {
     tuning: state.tuning,
     round: state.round,
     phase: state.phase,
+    // Whether orders have been turned face-up. Public, and the board reads it to
+    // decide what to show — so a networked seat needs it as much as a bot does.
+    revealed: state.revealed,
+    // The structured record of a resolution, for the playback animation. Public:
+    // it is exactly what everyone watches happen on the table.
+    beats: (state.beats || []).map((b) => ({ ...b })),
     deckCount: state.deck.length,
     deckStart: state.deckStart,
     crownStrength: crownStrength(state),
