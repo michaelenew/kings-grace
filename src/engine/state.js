@@ -146,9 +146,12 @@ export function claimableTitles(state, player) {
  */
 export function crownStrength(state) {
   const t = state.tuning;
+  // Works on the raw state (a deck array) or a redacted view (which carries the
+  // count instead of the order-secret deck itself).
+  const cardsLeft = state.deck ? state.deck.length : (state.deckCount ?? 0);
   // Rounded: the per-card term is fractional so the curve can be tuned finely,
   // but a crown that defends with 15.8 is not something you can put on a card.
-  return Math.round(t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * state.deck.length);
+  return Math.round(t.crownBase + t.crownPerPlayer * state.players.length + t.crownPerCard * cardsLeft);
 }
 
 /**
