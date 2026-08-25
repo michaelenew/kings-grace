@@ -315,7 +315,7 @@ function startHostedGame() {
   const seatDefs = [{ pid: hostPid, kind: 'local', controller: humanController(hostPid) }];
   app.room.members.forEach((m, i) => {
     m.seat = pids[i + 1];
-    seatDefs.push({ pid: m.seat, kind: 'remote', peerId: m.peerId });
+    seatDefs.push({ pid: m.seat, kind: 'remote', peerId: m.peerId, name: m.name });
   });
   for (let i = 1 + memberCount; i < total; i++) {
     seatDefs.push({ pid: pids[i], kind: 'bot', controller: createAI(state.players[i].personality, state.players[i].doctrine || 'opportunist', saltFor(state.seed, i)) });
@@ -328,12 +328,10 @@ function startHostedGame() {
   app.mode = 'host';
   app.screen = 'game';
   resetSessionState();
+  void names;
 
-  // Send each seated player their seat and opening board, and flip them in.
-  for (const m of app.room.members) {
-    app.net.send(m.peerId, { t: 'start', mySeat: m.seat, names, view: viewFor(state, m.seat) });
-  }
   game.subscribe(() => render());
+  host.broadcast(); // push the opening board; each view carries the seat's id
   render();
   game.run();
 }
@@ -375,12 +373,16 @@ function clientMessage(msg) {
     return;
   }
   if (msg.t === 'view') {
+    // Any view establishes (or re-establishes) my seat and drops me into the
+    // game — no reliance on a single hand-off message.
+    if (msg.you) { app.mySeat = msg.you; app.humanSeats = new Set([msg.you]); }
     app.view = msg.view;
-    if (app.screen !== 'game') app.screen = 'game';
+    app.screen = 'game';
     render();
     return;
   }
   if (msg.t === 'request') {
+    if (msg.pid) { app.mySeat = msg.pid; app.humanSeats = new Set([msg.pid]); }
     app.view = msg.view;
     app.pending = {
       pid: msg.pid,

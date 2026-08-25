@@ -81,7 +81,10 @@ export function joinRoom(code, handlers = {}) {
   let messageHandler = handlers.onMessage || (() => {});
 
   peer.on('open', (myId) => {
-    conn = peer.connect(ROOM_PREFIX + code, { reliable: true });
+    // JSON serialization, not PeerJS's default binary pack: our messages are
+    // plain objects, some large (a board view), and binary pack has been flaky
+    // with big nested objects. The initiator's choice governs both directions.
+    conn = peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' });
     conn.on('open', () => handlers.onReady && handlers.onReady(myId));
     conn.on('data', (data) => messageHandler(data));
     conn.on('close', () => handlers.onClose && handlers.onClose());

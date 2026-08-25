@@ -72,8 +72,17 @@ export function createHost({ game, transport, seats }) {
 
   const peerToSeat = (peerId) => seats.find((s) => s.kind === 'remote' && s.peerId === peerId);
 
+  // Every view carries `you` — the seat it is for — so a client learns its seat
+  // from any board update, not from one fragile hand-off message.
   function viewTo(seat) {
-    transport.send(seat.peerId, { t: 'view', view: viewFor(game.state, seat.pid) });
+    transport.send(seat.peerId, { t: 'view', you: seat.pid, view: viewFor(game.state, seat.pid) });
+  }
+
+  function resendPending(seat) {
+    const rec = remotes[seat.pid];
+    if (rec && rec.pending) {
+      transport.send(seat.peerId, { t: 'request', pid: seat.pid, rid: rec.pending.rid, request: rec.pending.request, view: rec.pending.view });
+    }
   }
 
   /** Push every remote seat its current redacted view. Fired on any state change. */
@@ -83,17 +92,32 @@ export function createHost({ game, transport, seats }) {
 
   transport.onMessage(async (from, msg) => {
     if (!msg || typeof msg !== 'object') return;
-    const seat = peerToSeat(from);
+    let seat = peerToSeat(from);
+
+    // Reconnect: a player who refreshed comes back as a NEW peer id. Match them
+    // to their seat by name and re-point it at the new channel, then catch them
+    // up. (Names are unique enough for a friendly table; a collision just picks
+    // the first free one.)
+    if (msg.t === 'join') {
+      if (seat) { viewTo(seat); resendPending(seat); return; }
+      const taken = new Set(seats.filter((s) => s.kind === 'remote').map((s) => s.peerId).filter((p) => transport.peers?.().includes?.(p)));
+      const match = seats.find((s) => s.kind === 'remote' && s.name && s.name === msg.name && !taken.has(s.peerId))
+        || seats.find((s) => s.kind === 'remote' && s.name === msg.name);
+      if (match) {
+        match.peerId = from;
+        if (remotes[match.pid]) remotes[match.pid].peerId = from;
+        viewTo(match);
+        resendPending(match);
+      }
+      return;
+    }
 
     if (msg.t === 'hello') {
       // A peer (re)connected. Send its board, and re-send any decision it still
       // owes us so a mid-turn reconnect is not stuck.
       if (!seat) return;
       viewTo(seat);
-      const rec = remotes[seat.pid];
-      if (rec && rec.pending) {
-        transport.send(from, { t: 'request', pid: seat.pid, rid: rec.pending.rid, request: rec.pending.request, view: rec.pending.view });
-      }
+      resendPending(seat);
       return;
     }
 
