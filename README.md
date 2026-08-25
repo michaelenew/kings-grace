@@ -7,14 +7,31 @@ outlawry, then take the throne before someone else inherits it.
 [RULES.md](RULES.md) is the ruleset in play, with an appendix of rulings and a
 note on what changed from the original v0.1 sheet and why.
 
-## Running it
+## Playing it online
+
+The game is hosted on GitHub Pages at **https://michaelenew.github.io/kings-grace/**
+— no install, just open the link.
+
+**Play with friends, each on your own device.** On the front screen, one person
+enters a name and clicks **Host a game**; they read out the four-letter room
+code. Everyone else types that code under **join** and connects. The host's
+device runs the game and sends each player only their own view, so sealed orders
+stay secret — you can all be in the same room without anyone seeing your screen.
+Empty seats fill with bots.
+
+It uses peer-to-peer WebRTC (via PeerJS), so it only works on the hosted site,
+not inside a sandboxed preview. Current limits: the host holds the game (if they
+close the tab, the game ends), a page refresh drops you, and orders seal one
+seat at a time rather than all at once.
+
+## Running it locally
 
 No dependencies, no build step. The app is plain ES modules, so it needs to be
 served over http rather than opened from the filesystem.
 
 ```sh
 npm start                  # http://localhost:5173
-npm test                   # 101 rules, bot, trust and balance tests
+npm test                   # rules, bot, trust, balance and netcode tests
 node tools/simulate.js     # the bot tournament harness the constants came from
 ```
 
