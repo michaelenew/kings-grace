@@ -8,7 +8,7 @@ import {
   PERSONALITY_LABEL, TITLES, TITLE_BY_ID, bandOf, cardText,
 } from '../engine/constants.js';
 import { Game, describeOrder } from '../engine/game.js';
-import { createGame, crownStrength, commitCeiling, wallsInfo } from '../engine/state.js';
+import { createGame, crownStrength, commitCeiling, wallsInfo, viewFor } from '../engine/state.js';
 import { PLAYER_MAX, PLAYER_MIN, resolveTuning } from '../engine/tuning.js';
 import { createAI, saltFor } from '../engine/ai.js';
 import { INTENTS, describeIntent } from '../engine/diplomacy.js';
@@ -19,6 +19,8 @@ import { sequenceCard, stageFor } from './sequence.js';
 import { referenceCard } from './reference.js';
 import { dealOffer, dealBuilder, blankDraft } from './dealtable.js';
 import { playResolution } from './animate.js';
+import { createHost } from '../net/host.js';
+import { hostRoom, joinRoom, makeRoomCode } from '../net/peer.js';
 
 const root = document.getElementById('app');
 
@@ -48,6 +50,14 @@ const app = {
   dealReply: null,
   hoveredStage: null,
   animating: false,
+  // ---- multiplayer ----
+  screen: 'setup', // 'setup' | 'lobby' | 'connecting' | 'game'
+  mode: 'solo', // 'solo' | 'host' | 'client'
+  mySeat: null, // my pid, in host/client mode
+  view: null, // the client's latest board view (client mode)
+  net: null, // the transport (host or client)
+  room: null, // lobby state: { code, status, members:[{peerId,name,seatIndex}], error }
+  online: { name: '', code: '' }, // the host/join form on the setup screen
   settings: {
     seed: '',
     ransom: false,
@@ -107,8 +117,41 @@ function answer(value) {
   if (!p) return;
   app.pending = null;
   app.parleyReply = null;
-  p.resolve(value);
+  if (p.submit) p.submit(value); // client: send back over the wire
+  else p.resolve(value); // solo / host-local: resolve the engine's promise
   render();
+}
+
+// The board is drawn from a redacted, state-shaped VIEW, never the raw state —
+// so a screen only ever shows public information plus this seat's own. Solo play
+// is its own author and sees everything; the host renders its own view; a client
+// renders whatever the host last sent it.
+function currentView() {
+  if (app.mode === 'client') return app.view;
+  if (app.mode === 'host') return app.game ? viewFor(app.game.state, app.mySeat) : null;
+  return app.game ? app.game.state : null;
+}
+
+// Whether the table is open for bargaining, read from the board rather than the
+// engine — so a client (which has no engine) can tell too. Mirrors game.dealsOpen.
+function dealsOpenNow() {
+  const s = currentView();
+  return !!s && !['resolve', 'income', 'gameOver', 'setup'].includes(s.phase);
+}
+
+// A free move (a deal, a word). The host and solo play call the engine directly;
+// a client ships it to the host, which applies it and broadcasts the result.
+async function dispatch(method, args) {
+  if (app.mode === 'client') {
+    app.net.send({ t: 'action', pid: app.mySeat, method, args });
+    return { ok: true }; // optimistic; the truth arrives in the next view
+  }
+  const g = app.game;
+  if (method === 'proposeDealTable') return g.proposeDealTable(args.pid, args.transfers);
+  if (method === 'acceptDeal') return g.acceptDeal(args.pid);
+  if (method === 'clearDeal') return g.clearDeal(args.pid, args.reason);
+  if (method === 'declarePromise') return g.declarePromise(args.pid, args.intent);
+  return { ok: false };
 }
 
 function defaultDraft(request) {
@@ -121,8 +164,55 @@ function defaultDraft(request) {
 
 // ---------------------------------------------------------------- new game
 
+// The between-phase beats, shared by solo and host play. A client never runs
+// the engine, so it never pauses — it just receives the board as it changes.
+function gamePause(beat) {
+  return new Promise((resolve) => {
+    const kind = typeof beat === 'string' ? beat : beat?.kind;
+    // Nobody watching (a headless run): never wait.
+    if (app.mode !== 'client' && app.humanSeats.size === 0) { resolve(); return; }
+
+    // End of round: replay the resolution, then hold on the recap until the
+    // player moves on. Always manual — the moment to take stock.
+    if (kind === 'roundEnd') {
+      (async () => {
+        if (app.settings.animate) await showResolution();
+        app.paused = { kind, resolve }; render();
+      })();
+      return;
+    }
+    // Transition beats: instant with animation off, else a short skippable hold.
+    if (!app.settings.animate) { resolve(); return; }
+    app.paused = { kind, beat, resolve, auto: true, fading: false };
+    render();
+    const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
+    app.pauseTimer = setTimeout(() => {
+      if (!app.paused) return;
+      app.paused.fading = true;
+      render();
+      app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, FADE_MS);
+    }, ms);
+  });
+}
+
+function resetSessionState() {
+  app.pending = null;
+  app.paused = null;
+  app.gate = null;
+  app.lastSeatShown = null;
+  app.dealDraft = null;
+  app.dealReply = null;
+  app.stageMax = 0;
+  app.trayFor = null;
+  app.trayNote = null;
+}
+
 function startGame() {
   app.generation += 1;
+  app.mode = 'solo';
+  app.mySeat = null;
+  app.view = null;
+  app.screen = 'game';
   const s = app.settings;
   const state = createGame({
     seed: s.seed.trim() === '' ? undefined : s.seed.trim(),
@@ -140,51 +230,9 @@ function startGame() {
       controllers[p.id] = createAI(p.personality, p.doctrine || 'opportunist', saltFor(state.seed, p.seat));
     }
   }
-  const game = new Game({
-    state,
-    controllers,
-    pause: async (beat) => {
-      // No watching human means a simulation or a headless run: never wait.
-      if (app.humanSeats.size === 0) return;
-      const kind = typeof beat === 'string' ? beat : beat?.kind;
-
-      // End of round: replay the resolution over the table, then hold on the
-      // recap until the player chooses to move on. This one is always manual —
-      // it is the moment to take stock.
-      if (kind === 'roundEnd') {
-        if (app.settings.animate) await showResolution();
-        await new Promise((resolve) => { app.paused = { kind, resolve }; render(); });
-        return;
-      }
-
-      // Transition beats (a card reveal, the step between phases) are part of
-      // the flow, not an afterthought: they mark the game advancing and give a
-      // second to read the board. Instant when animation is off; otherwise a
-      // short, self-clearing hold the player can click through.
-      if (!app.settings.animate) return;
-      await new Promise((resolve) => {
-        app.paused = { kind, beat, resolve, auto: true, fading: false };
-        render();
-        const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
-        // Hold, then fade out, then hand off — so the beat lands softly rather
-        // than snapping to the next phase.
-        app.pauseTimer = setTimeout(() => {
-          if (!app.paused) return;
-          app.paused.fading = true;
-          render();
-          app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, FADE_MS);
-        }, ms);
-      });
-    },
-  });
+  const game = new Game({ state, controllers, pause: gamePause });
   app.game = game;
-  app.pending = null;
-  app.paused = null;
-  app.gate = null;
-  app.lastSeatShown = null;
-  app.dealDraft = null;
-  app.dealReply = null;
-  app.stageMax = 0;
+  resetSessionState();
   game.subscribe(() => render());
   render();
   game.run();
@@ -195,6 +243,172 @@ function activeTuning() {
   return { ...app.settings.tuning };
 }
 
+// ------------------------------------------------------------- multiplayer
+
+const friendlyPeerError = (err) => {
+  const t = err?.type;
+  if (t === 'unavailable-id') return 'That room code is already in use — pick another.';
+  if (t === 'peer-unavailable') return 'No game found with that code. Check it and try again.';
+  if (t === 'browser-incompatible') return 'This browser can’t do peer-to-peer. Try Chrome, Edge, or Firefox.';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error') return 'Couldn’t reach the matchmaking service. Try again in a moment.';
+  return err?.message || 'Connection problem — try again.';
+};
+
+/** Host: open a room and wait for players in the lobby. */
+function hostNewGame() {
+  const code = makeRoomCode();
+  app.mode = 'host';
+  app.screen = 'lobby';
+  app.mySeat = null;
+  app.room = { code, isHost: true, status: 'opening', members: [], players: 3, error: null };
+  app.net = hostRoom(code, {
+    onReady: () => { app.room.status = 'open'; render(); },
+    onError: (err) => { app.room.error = friendlyPeerError(err); render(); },
+    onLeave: (peerId) => {
+      app.room.members = app.room.members.filter((m) => m.peerId !== peerId);
+      broadcastLobby(); render();
+    },
+    onMessage: (peerId, msg) => {
+      if (msg?.t === 'join') {
+        const name = String(msg.name || 'A house').slice(0, 20);
+        const existing = app.room.members.find((m) => m.peerId === peerId);
+        if (existing) existing.name = name;
+        else app.room.members.push({ peerId, name });
+        app.room.players = Math.max(app.room.players, Math.min(PLAYER_MAX, 1 + app.room.members.length));
+        broadcastLobby(); render();
+      }
+    },
+  });
+  render();
+}
+
+function broadcastLobby() {
+  if (app.mode !== 'host' || !app.net) return;
+  app.net.broadcast({
+    t: 'lobby',
+    code: app.room.code,
+    players: app.room.players,
+    members: app.room.members.map((m) => ({ name: m.name })),
+  });
+}
+
+/** Host: build the game, seat everyone, and go. */
+function startHostedGame() {
+  const total = app.room.players;
+  const memberCount = app.room.members.length;
+  if (1 + memberCount > total) { app.room.error = 'More players than seats — raise the table size.'; render(); return; }
+
+  app.generation += 1;
+  const s = app.settings;
+  const state = createGame({
+    seed: s.seed.trim() === '' ? undefined : s.seed.trim(),
+    options: { ransom: s.ransom, seedFavorEarly: s.seedFavorEarly },
+    tuning: activeTuning(),
+    seats: HOUSE_NAMES.slice(0, total).map((name) => ({ kind: 'human', name })),
+  });
+  const pids = state.players.map((p) => p.id);
+  const names = state.players.map((p) => p.name);
+  const hostPid = pids[0];
+
+  app.humanSeats = new Set([hostPid]);
+  app.mySeat = hostPid;
+  const seatDefs = [{ pid: hostPid, kind: 'local', controller: humanController(hostPid) }];
+  app.room.members.forEach((m, i) => {
+    m.seat = pids[i + 1];
+    seatDefs.push({ pid: m.seat, kind: 'remote', peerId: m.peerId });
+  });
+  for (let i = 1 + memberCount; i < total; i++) {
+    seatDefs.push({ pid: pids[i], kind: 'bot', controller: createAI(state.players[i].personality, state.players[i].doctrine || 'opportunist', saltFor(state.seed, i)) });
+  }
+
+  const game = new Game({ state, controllers: {}, pause: gamePause });
+  const host = createHost({ game, transport: app.net, seats: seatDefs });
+  game.controllers = host.controllers;
+  app.game = game;
+  app.mode = 'host';
+  app.screen = 'game';
+  resetSessionState();
+
+  // Send each seated player their seat and opening board, and flip them in.
+  for (const m of app.room.members) {
+    app.net.send(m.peerId, { t: 'start', mySeat: m.seat, names, view: viewFor(state, m.seat) });
+  }
+  game.subscribe(() => render());
+  render();
+  game.run();
+}
+
+/** Player: connect to a room by code. */
+function joinGame(code, name) {
+  app.mode = 'client';
+  app.screen = 'connecting';
+  app.mySeat = null;
+  app.view = null;
+  app.room = { code, isHost: false, name, status: 'connecting', members: [], names: [], error: null };
+  app.net = joinRoom(code, {
+    onReady: () => { app.room.status = 'joined'; app.net.send({ t: 'join', name }); render(); },
+    onClose: () => { if (app.mode === 'client') { app.room.error = 'Lost the connection to the host.'; render(); } },
+    onError: (err) => { app.room.error = friendlyPeerError(err); render(); },
+    onMessage: (msg) => clientMessage(msg),
+  });
+  render();
+}
+
+function clientMessage(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.t === 'lobby') {
+    app.room.members = msg.members || [];
+    app.room.players = msg.players;
+    if (app.screen !== 'game') app.screen = 'lobby';
+    render();
+    return;
+  }
+  if (msg.t === 'start') {
+    app.mySeat = msg.mySeat;
+    app.room.names = msg.names || [];
+    app.humanSeats = new Set([msg.mySeat]);
+    app.view = msg.view;
+    app.screen = 'game';
+    resetSessionState();
+    app.net.send({ t: 'hello' }); // pull any decision already waiting on me
+    render();
+    return;
+  }
+  if (msg.t === 'view') {
+    app.view = msg.view;
+    if (app.screen !== 'game') app.screen = 'game';
+    render();
+    return;
+  }
+  if (msg.t === 'request') {
+    app.view = msg.view;
+    app.pending = {
+      pid: msg.pid,
+      request: msg.request,
+      view: msg.view,
+      submit: (a) => app.net.send({ t: 'answer', pid: msg.pid, rid: msg.rid, answer: a }),
+    };
+    app.draft = defaultDraft(msg.request, msg.view, msg.pid);
+    app.screen = 'game';
+    render();
+  }
+}
+
+/** Tear down any session and return to the front screen. */
+function leaveSession() {
+  try { app.net?.close(); } catch { /* already gone */ }
+  app.net = null;
+  app.game = null;
+  app.mode = 'solo';
+  app.mySeat = null;
+  app.view = null;
+  app.room = null;
+  app.screen = 'setup';
+  app.generation += 1;
+  resetSessionState();
+  render();
+}
+
 function firstHuman(state) {
   return state.players.find((p) => p.kind === 'human')?.id ?? state.players[0].id;
 }
@@ -202,7 +416,7 @@ function firstHuman(state) {
 /** Replay this round's resolution over the table before the recap. */
 async function showResolution() {
   const generation = app.generation;
-  const beats = app.game?.state.beats || [];
+  const beats = currentView()?.beats || [];
   if (!beats.length) return;
   app.animating = true;
   render();
@@ -241,8 +455,9 @@ export function closePopover() {
  * named only have to accept or reject.
  */
 function trayEditor() {
-  if (!app.trayFor || !app.game) return null;
-  const s = app.game.state;
+  if (!app.trayFor) return null;
+  const s = currentView();
+  if (!s) return null;
   const pid = app.trayFor;
   const others = s.players.filter((p) => p.id !== pid).map((p) => p.id);
   const draft = app.trayDraft ??= blankDraft(pid, others);
@@ -257,9 +472,9 @@ function trayEditor() {
       dealBuilder(s, pid, draft, {
         onChange: change,
         onPropose: async () => {
-          const res = await app.game.proposeDealTable(pid, draft.transfers);
+          const res = await dispatch('proposeDealTable', { pid, transfers: draft.transfers });
           if (res.ok) {
-            if (draft.intent) app.game.declarePromise(pid, { to: draft.intentOf, kind: draft.intent, subject: draft.intentSubject });
+            if (draft.intent) dispatch('declarePromise', { pid, intent: { to: draft.intentOf, kind: draft.intent, subject: draft.intentSubject } });
             app.trayNote = null;
             close();
           } else {
@@ -290,8 +505,11 @@ function popoverView() {
 }
 
 function render() {
-  if (!app.game) return mount(root, setupScreen());
-  const s = app.game.state;
+  if (app.screen === 'setup') return mount(root, setupScreen());
+  if (app.screen === 'lobby') return mount(root, lobbyScreen());
+  if (app.screen === 'connecting') return mount(root, connectingScreen());
+  const s = currentView();
+  if (!s) return mount(root, connectingScreen());
   mount(
     root,
     topBar(s),
@@ -489,6 +707,100 @@ function setupScreen() {
       ]),
       el('button', { class: 'primary big', onclick: startGame }, 'Convene the court'),
       el('button', { class: 'ghost', onclick: () => showRules() }, 'Read the rules'),
+      onlinePanel(),
+    ]),
+  ]);
+}
+
+/** Host-or-join, right on the setup card. */
+function onlinePanel() {
+  const o = app.online;
+  const canPeer = typeof window !== 'undefined' && !!window.Peer;
+  return el('div', { class: 'online' }, [
+    el('h3', {}, 'Play with friends'),
+    el('p', { class: 'hint' }, canPeer
+      ? 'One person hosts and reads out the room code; everyone else joins with it. You each play from your own device — the host’s screen keeps the secrets.'
+      : 'Peer-to-peer isn’t available here. This works on the hosted site (github.io), not inside a preview sandbox.'),
+    el('label', { class: 'field' }, [
+      el('span', {}, 'Your name'),
+      el('input', { type: 'text', value: o.name, maxlength: '20', placeholder: 'e.g. Aveline', oninput: (e) => { o.name = e.target.value; } }),
+    ]),
+    el('div', { class: 'online-actions' }, [
+      el('button', {
+        class: 'primary', disabled: !canPeer,
+        onclick: () => hostNewGame(),
+      }, 'Host a game'),
+      el('span', { class: 'online-or' }, 'or join'),
+      el('input', {
+        type: 'text', class: 'code-input', value: o.code, maxlength: '4', placeholder: 'CODE',
+        oninput: (e) => { o.code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); render(); },
+      }),
+      el('button', {
+        class: 'ghost', disabled: !canPeer || o.code.length < 4,
+        onclick: () => joinGame(o.code, o.name || 'A house'),
+      }, 'Join'),
+    ]),
+  ]);
+}
+
+/** The host's and the joiner's waiting room. */
+function lobbyScreen() {
+  const r = app.room || {};
+  const isHost = r.isHost;
+  const seated = isHost ? [{ name: app.online.name || 'You', you: true, host: true }, ...(r.members || [])] : (r.members || []);
+  const total = r.players || 3;
+  const bots = Math.max(0, total - (isHost ? 1 + (r.members || []).length : (r.members || []).length));
+
+  const roster = [];
+  seated.forEach((m, i) => roster.push(el('li', { class: 'lobby-seat' }, [
+    el('span', { class: 'lobby-name' }, m.name + (m.you ? ' (you)' : '') + (m.host && !m.you ? ' (host)' : m.host ? ' — host' : '')),
+  ])));
+  for (let i = 0; i < bots; i++) roster.push(el('li', { class: 'lobby-seat bot' }, [el('span', {}, 'A bot')]));
+
+  return el('div', { class: 'setup' }, [
+    el('div', { class: 'setup-card lobby' }, [
+      el('h1', { class: 'title' }, 'The King’s Graces'),
+      r.error ? el('p', { class: 'warn' }, r.error) : null,
+      el('div', { class: 'room-code-box' }, [
+        el('span', { class: 'room-code-label' }, 'Room code'),
+        el('strong', { class: 'room-code' }, r.status === 'opening' ? '····' : r.code),
+      ]),
+      el('p', { class: 'hint' }, isHost
+        ? 'Read this code to your friends. They enter it under “join” on their own device.'
+        : 'Waiting for the host to start the game…'),
+      el('h3', {}, 'At the table'),
+      el('ul', { class: 'lobby-roster' }, roster),
+      isHost ? el('label', { class: 'field' }, [
+        el('span', {}, 'Table size (empty seats are bots)'),
+        select(
+          Array.from({ length: PLAYER_MAX - PLAYER_MIN + 1 }, (_, i) => ({ value: PLAYER_MIN + i, label: `${PLAYER_MIN + i} players` }))
+            .filter((opt) => Number(opt.value) >= 1 + (r.members || []).length),
+          total,
+          (v) => { r.players = Number(v); broadcastLobby(); render(); },
+        ),
+      ]) : null,
+      isHost
+        ? el('button', { class: 'primary big', disabled: r.status !== 'open', onclick: () => startHostedGame() }, 'Start the game')
+        : el('div', { class: 'waiting' }, [el('span', { class: 'spinner' }), el('p', {}, 'Ready — waiting on the host.')]),
+      el('button', { class: 'ghost', onclick: () => leaveSession() }, isHost ? 'Close the room' : 'Leave'),
+    ]),
+  ]);
+}
+
+function connectingScreen() {
+  const r = app.room || {};
+  return el('div', { class: 'setup' }, [
+    el('div', { class: 'setup-card' }, [
+      el('h1', { class: 'title' }, 'The King’s Graces'),
+      r.error
+        ? el('div', {}, [
+          el('p', { class: 'warn' }, r.error),
+          el('button', { class: 'ghost', onclick: () => leaveSession() }, 'Back'),
+        ])
+        : el('div', { class: 'waiting' }, [
+          el('span', { class: 'spinner' }),
+          el('p', {}, `Connecting to room ${r.code || ''}…`),
+        ]),
     ]),
   ]);
 }
@@ -548,7 +860,7 @@ function topBar(s) {
         onclick: () => { app.settings.animate = !app.settings.animate; if (!app.settings.animate) app.animating = false; render(); },
       }, app.settings.animate ? 'Animation on' : 'Animation off'),
       el('button', { class: 'ghost', onclick: () => showRules() }, 'Full rules'),
-      el('button', { class: 'ghost', onclick: () => { if (confirm('Abandon this game?')) { app.game = null; render(); } } }, 'New game'),
+      el('button', { class: 'ghost', onclick: () => { if (confirm('Abandon this game?')) leaveSession(); } }, 'New game'),
     ]),
   ]);
 }
@@ -589,7 +901,7 @@ function dealTray(s, p) {
  */
 function giveWordButton(s, p) {
   const me = viewingSeat(s);
-  if (!me || !app.game?.dealsOpen) return null;
+  if (!me || !dealsOpenNow()) return null;
   const given = (s.promises || []).find((x) => x.round === s.round && x.from === me.id && x.to === p.id);
   return el('button', {
     class: `ghost small${given ? ' on' : ''}`,
@@ -597,7 +909,7 @@ function giveWordButton(s, p) {
       ...INTENTS.filter((i) => !i.needsSubject).map((intent) => el('button', {
         class: `choice${given?.kind === intent.id ? ' chosen' : ''}`,
         onclick: () => {
-          app.game.declarePromise(me.id, { to: p.id, kind: intent.id });
+          dispatch('declarePromise', { pid: me.id, intent: { to: p.id, kind: intent.id } });
           closePopover();
           render();
         },
@@ -657,7 +969,7 @@ function centrePiece(s) {
  */
 function centreDeal(s) {
   const table = s.dealTable || { proposer: null, transfers: [], accepted: [] };
-  const open = !!app.game?.dealsOpen;
+  const open = dealsOpenNow();
   const humans = s.players.filter((p) => app.humanSeats.has(p.id));
   const name = (id) => s.players.find((x) => x.id === id)?.name ?? id;
   const firstName = (id) => name(id).split(' ')[0];
@@ -681,13 +993,14 @@ function centreDeal(s) {
   const parts = participants({ transfers: table.transfers });
   const me = viewingSeat(s);
   const accept = async (pid) => {
-    const res = await app.game.acceptDeal(pid);
+    const res = await dispatch('acceptDeal', { pid });
     app.trayNote = res.settled ? 'The bargain is struck.'
       : res.reason ? res.reason
-        : `Waiting on ${(res.waiting || []).map(firstName).join(', ')}.`;
+        : res.waiting ? `Waiting on ${(res.waiting || []).map(firstName).join(', ')}.`
+          : null;
     render();
   };
-  const kill = async (pid, reason) => { await app.game.clearDeal(pid, reason); app.trayNote = null; render(); };
+  const kill = async (pid, reason) => { await dispatch('clearDeal', { pid, reason }); app.trayNote = null; render(); };
 
   const legs = table.transfers.filter((t) => !isEmptyGoods(t.goods)).map((t) => el('div', { class: 'deal-legrow' }, [
     el('span', { class: 'deal-leg-from' }, firstName(t.from)),
@@ -832,6 +1145,8 @@ function standingRow(s, p) {
 
 /** Whose eyes the board is being drawn through right now. */
 function viewingSeat(s) {
+  // In a networked game every device is exactly one seat — its own.
+  if (app.mySeat) return s.players.find((p) => p.id === app.mySeat) || null;
   const pending = app.pending?.pid;
   if (pending && app.humanSeats.has(pending)) return s.players.find((p) => p.id === pending);
   const first = [...app.humanSeats][0];
@@ -1000,7 +1315,7 @@ function victoryPanel(s) {
         el('td', {}, p.titles.map((t) => TITLE_BY_ID[t].name).join(', ') || '—'),
       ]))),
     ]),
-    el('button', { class: 'primary big', onclick: () => { app.game = null; render(); } }, 'Play again'),
+    el('button', { class: 'primary big', onclick: () => leaveSession() }, 'Play again'),
   ]);
 }
 
@@ -1404,7 +1719,7 @@ function chronicleView(s) {
 
 function showRules() {
   const dialog = document.getElementById('rules-dialog');
-  const t = app.game ? app.game.state.tuning : resolveTuning(activeTuning());
+  const t = currentView()?.tuning ?? resolveTuning(activeTuning());
   const capLine = t.commitCap
     ? `No single order may carry more than ${t.commitCap} gold.`
     : 'A single order may carry any amount of gold you hold.';

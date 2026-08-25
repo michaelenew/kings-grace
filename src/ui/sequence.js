@@ -47,21 +47,26 @@ export function stageFor(phase) {
  * @param {(title: string, text: string) => void} explain opens a popover
  */
 export function sequenceCard(state, explain) {
+  // Solo play passes the raw state (a deck array); a networked seat renders from
+  // a redacted view, which carries the public per-kind counts instead. Accept
+  // either — never the deck's order, which is secret.
   const remaining = {};
-  for (const card of state.deck) remaining[card] = (remaining[card] || 0) + 1;
+  if (state.deck) for (const card of state.deck) remaining[card] = (remaining[card] || 0) + 1;
+  else Object.assign(remaining, state.deckCounts || {});
+  const left = state.deck ? state.deck.length : (state.deckCount ?? 0);
   const current = stageFor(state.phase);
   const shown = STAGES.find((s) => s.id === current);
 
   return el('aside', { class: 'sequence' }, [
     el('div', { class: 'deck-count' }, [
-      el('strong', {}, `${state.deck.length}`),
+      el('strong', {}, `${left}`),
       el('span', {}, ` / ${state.deckStart} cards remain`),
     ]),
     el('div', { class: 'deck-breakdown' },
       Object.entries(CARD_LABEL)
         .filter(([id]) => remaining[id])
         .map(([id, label]) => el('span', { class: `deck-tag tag-${id}` }, `${label}: ${remaining[id]}`))
-        .concat(state.deck.length ? [] : [el('span', { class: 'deck-tag' }, 'the deck is spent')])),
+        .concat(left ? [] : [el('span', { class: 'deck-tag' }, 'the deck is spent')])),
 
     el('h3', {}, 'The round'),
     el('ol', { class: 'stages' }, STAGES.map((stage, i) => el('li', {}, [

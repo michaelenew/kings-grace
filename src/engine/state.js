@@ -239,6 +239,12 @@ export function viewFor(state, pid) {
     crownStrength: crownStrength(state),
     lastCard: state.lastCard,
     knownTopCard: known.topCard ?? null,
+    // What is left in the deck, by kind — public (everyone can count what has
+    // been played); the ORDER stays secret (only a peek reveals the next card).
+    deckCounts: (() => { const c = {}; for (const card of state.deck) c[card] = (c[card] || 0) + 1; return c; })(),
+    // The chronicle, as this seat may read it: the shared narration, plus this
+    // seat's own secret lines (a peek result), never anyone else's.
+    log: (state.log || []).filter((l) => !l.secret || l.pid === pid).map((l) => ({ ...l })),
     neutralPool: state.neutralPool,
     crownLands: state.crownLands,
     // Orders are simultaneous, so the *size* of another player's commitment is
