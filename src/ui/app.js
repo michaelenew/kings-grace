@@ -725,21 +725,30 @@ function onlinePanel() {
       el('span', {}, 'Your name'),
       el('input', { type: 'text', value: o.name, maxlength: '20', placeholder: 'e.g. Aveline', oninput: (e) => { o.name = e.target.value; } }),
     ]),
-    el('div', { class: 'online-actions' }, [
-      el('button', {
-        class: 'primary', disabled: !canPeer,
-        onclick: () => hostNewGame(),
-      }, 'Host a game'),
-      el('span', { class: 'online-or' }, 'or join'),
-      el('input', {
-        type: 'text', class: 'code-input', value: o.code, maxlength: '4', placeholder: 'CODE',
-        oninput: (e) => { o.code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); render(); },
-      }),
-      el('button', {
+    (() => {
+      const joinBtn = el('button', {
         class: 'ghost', disabled: !canPeer || o.code.length < 4,
-        onclick: () => joinGame(o.code, o.name || 'A house'),
-      }, 'Join'),
-    ]),
+        onclick: () => { if (o.code.length >= 4) joinGame(o.code, o.name || 'A house'); },
+      }, 'Join');
+      // Update in place, never re-render, or the mobile keyboard is dismissed
+      // on every keystroke as the input node is torn down and rebuilt.
+      const codeInput = el('input', {
+        type: 'text', class: 'code-input', value: o.code, maxlength: '4', placeholder: 'CODE',
+        autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
+        oninput: (e) => {
+          const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (e.target.value !== v) e.target.value = v;
+          o.code = v;
+          joinBtn.disabled = !canPeer || v.length < 4;
+        },
+      });
+      return el('div', { class: 'online-actions' }, [
+        el('button', { class: 'primary', disabled: !canPeer, onclick: () => hostNewGame() }, 'Host a game'),
+        el('span', { class: 'online-or' }, 'or join'),
+        codeInput,
+        joinBtn,
+      ]);
+    })(),
   ]);
 }
 
