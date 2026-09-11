@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The King's Graces — prototype rules v0.1 as a playable web app",
+  "description": "The King's Graces \u2014 prototype rules v0.1 as a playable web app",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "test:p2p": "node test/p2p/run.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
   }
 }

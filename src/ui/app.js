@@ -48,7 +48,6 @@ const app = {
   trayFor: null,
   trayDraft: null,
   trayNote: null,
-  pauseTimer: null, // the auto-advance handle for a transition beat
   stageMax: 0, // tallest the turn panel has needed, so it stops resizing
   dealDraft: null,
   dealReply: null,
@@ -75,6 +74,7 @@ const app = {
   },
   advancedOpen: false,
   fatal: null, // the game stopped on an error — {text, stack}
+  lastHeard: 0, // when the host last said anything (client mode)
 };
 
 /**
@@ -199,6 +199,18 @@ function defaultDraft(request) {
 
 // ---------------------------------------------------------------- new game
 
+/**
+ * The beats belong to the game on screen. A game that has been replaced — a
+ * second press of Start, a solo game left running in the tab — must never take
+ * the screen's pause: its beat would displace the live game's in `app.paused`,
+ * and the live run loop would then be waiting on a resolve nobody can reach.
+ * That is a table frozen mid-phase with nothing paused, nothing pending and
+ * nothing thrown, which is exactly how this failed at a real table.
+ */
+function pauseFor(generation) {
+  return (beat) => (generation === app.generation ? gamePause(beat) : Promise.resolve());
+}
+
 // The between-phase beats, shared by solo and host play. A client never runs
 // the engine, so it never pauses — it just receives the board as it changes.
 function gamePause(beat) {
@@ -206,6 +218,21 @@ function gamePause(beat) {
     const kind = typeof beat === 'string' ? beat : beat?.kind;
     // Nobody watching (a headless run): never wait.
     if (app.mode !== 'client' && app.humanSeats.size === 0) { resolve(); return; }
+
+    // A beat owns its own timers and ends exactly once, whoever ends it —
+    // its own clock, a click, or losing the screen to somebody else. It used to
+    // hang off two globals shared by every beat of every game, so there was no
+    // way back to a resolve once another beat had taken `app.paused`.
+    const entry = { kind, beat, auto: kind !== 'roundEnd', fading: false, timers: [] };
+    let done = false;
+    entry.resolve = () => {
+      if (done) return;
+      done = true;
+      for (const t of entry.timers) clearTimeout(t);
+      if (app.paused === entry) app.paused = null;
+      resolve();
+    };
+    const hold = (ms, fn) => entry.timers.push(setTimeout(fn, ms));
 
     // End of round: replay the resolution, then hold on the recap until the
     // player moves on. Always manual — the moment to take stock.
@@ -217,24 +244,22 @@ function gamePause(beat) {
         if (app.settings.animate) {
           try { await showResolution(); } catch { app.animating = false; }
         }
-        app.paused = { kind, resolve }; render();
+        app.paused = entry; render();
       })();
       return;
     }
     // Transition beats: instant with animation off, else a short skippable hold.
-    if (!app.settings.animate) { resolve(); return; }
-    app.paused = { kind, beat, resolve, auto: true, fading: false };
+    if (!app.settings.animate) { entry.resolve(); return; }
+    app.paused = entry;
     render();
-    const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
-    app.pauseTimer = setTimeout(() => {
-      // However this goes, the beat has to end. Every path out of here either
-      // resolves or schedules the fade that will: a `return` on its own leaves
-      // the run loop waiting on a promise that can never settle.
-      if (!app.paused) { resolve(); return; }
-      app.paused.fading = true;
+    hold(kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS, () => {
+      // Somebody else holds the screen now. End this beat rather than wait on a
+      // fade that was never going to be ours.
+      if (app.paused !== entry) { entry.resolve(); return; }
+      entry.fading = true;
       try { render(); } catch (err) { fatal(err); }
-      app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, FADE_MS);
-    }, ms);
+      hold(FADE_MS, entry.resolve);
+    });
   });
 }
 
@@ -276,7 +301,7 @@ function startGame() {
       controllers[p.id] = createAI(p.personality, p.doctrine || 'opportunist', saltFor(state.seed, p.seat));
     }
   }
-  const game = new Game({ state, controllers, pause: gamePause });
+  const game = new Game({ state, controllers, pause: pauseFor(app.generation) });
   app.game = game;
   resetSessionState();
   game.subscribe(() => safeRender());
@@ -330,10 +355,14 @@ function hostNewGame() {
     onReady: () => { app.room.status = 'open'; render(); },
     onError: (err) => { app.room.error = friendlyPeerError(err); render(); },
     onLeave: (peerId) => {
+      // These outlive the lobby: the transport keeps them for the life of the
+      // room, and closing a session tears down `app.room` under them.
+      if (!app.room) return;
       app.room.members = app.room.members.filter((m) => m.peerId !== peerId);
       broadcastLobby(); render();
     },
     onMessage: (peerId, msg) => {
+      if (!app.room) return;
       if (msg?.t === 'join') {
         const name = String(msg.name || 'A house').slice(0, 20);
         // A player who refreshes comes back as a new peer id. Match them to the
@@ -392,7 +421,7 @@ function startHostedGame() {
     seatDefs.push({ pid: pids[i], kind: 'bot', controller: createAI(state.players[i].personality, state.players[i].doctrine || 'opportunist', saltFor(state.seed, i)) });
   }
 
-  const game = new Game({ state, controllers: {}, pause: gamePause });
+  const game = new Game({ state, controllers: {}, pause: pauseFor(app.generation) });
   const host = createHost({ game, transport: app.net, seats: seatDefs });
   game.controllers = host.controllers;
   app.game = game;
@@ -448,6 +477,7 @@ function clientMessage(msg) {
     render();
     return;
   }
+  app.lastHeard = Date.now();
   if (msg.t === 'view') {
     // Any view establishes (or re-establishes) my seat and drops me into the
     // game — no reliance on a single hand-off message.
@@ -510,11 +540,9 @@ async function showResolution() {
 }
 
 function resume() {
-  if (app.pauseTimer) { clearTimeout(app.pauseTimer); app.pauseTimer = null; }
   const p = app.paused;
   if (!p) return;
-  app.paused = null;
-  p.resolve();
+  p.resolve(); // idempotent: cancels its own timers and lets go of the screen
   render();
 }
 
@@ -1340,7 +1368,7 @@ function stageView(s) {
         // Nobody is outstanding, so this is the engine between beats. Name the
         // beat: if this panel is ever still here a minute later, which one it
         // stopped on is the whole diagnosis.
-        : `The court deliberates… (round ${s.round}, ${s.phase})`),
+        : `The court deliberates… (round ${s.round}, ${s.phase})${quietFor()}`),
     ]),
   ]);
 }
@@ -1450,6 +1478,17 @@ function requestPanel(s) {
     body ? body() : el('button', { class: 'primary', onclick: () => answer(null) }, 'Continue'),
     knownIntel(s, view),
   ]);
+}
+
+/**
+ * How long the host has been silent, for a guest. A board that has stopped
+ * changing is either a host still thinking or a host that has stopped talking
+ * to us, and those look identical from this side until you say which.
+ */
+function quietFor() {
+  if (app.mode !== 'client' || !app.lastHeard) return '';
+  const seconds = Math.round((Date.now() - app.lastHeard) / 1000);
+  return seconds >= 10 ? ` — nothing from the host for ${seconds}s` : '';
 }
 
 function stageTitle(request) {
