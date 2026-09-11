@@ -124,7 +124,13 @@ function humanController(pid) {
     kind: 'human',
     decide(request, view) {
       return new Promise((resolve) => {
-        if (generation !== app.generation) return; // abandoned game
+        // An abandoned game — one whose session has been replaced — still has a
+        // run loop awaiting this. Answer it with nothing so that loop unwinds
+        // and lets go. Returning here instead left a promise that could never
+        // settle, and if the generation is ever wrong about which game is live,
+        // that is the whole table frozen on a spinner with nothing thrown and
+        // nothing in the console to say why.
+        if (generation !== app.generation) { resolve(null); return; }
         app.pending = { pid, request, view, resolve };
         app.draft = defaultDraft(request, view, pid);
         app.parleyReply = null;
@@ -221,9 +227,12 @@ function gamePause(beat) {
     render();
     const ms = kind === 'reveal' ? REVEAL_MS : INTERLUDE_MS;
     app.pauseTimer = setTimeout(() => {
-      if (!app.paused) return;
+      // However this goes, the beat has to end. Every path out of here either
+      // resolves or schedules the fade that will: a `return` on its own leaves
+      // the run loop waiting on a promise that can never settle.
+      if (!app.paused) { resolve(); return; }
       app.paused.fading = true;
-      render();
+      try { render(); } catch (err) { fatal(err); }
       app.pauseTimer = setTimeout(() => { app.pauseTimer = null; resume(); }, FADE_MS);
     }, ms);
   });
@@ -272,7 +281,17 @@ function startGame() {
   resetSessionState();
   game.subscribe(() => safeRender());
   render();
-  game.run().catch(fatal);
+  runGame(game);
+}
+
+/**
+ * Start the loop, and surface anything that stops it — but only while this is
+ * still the game on screen, so a session the player has already walked away
+ * from cannot throw an error card over the one they are playing now.
+ */
+function runGame(game) {
+  const generation = app.generation;
+  game.run().catch((err) => { if (generation === app.generation) fatal(err); });
 }
 
 /**
@@ -390,7 +409,7 @@ function startHostedGame() {
   game.subscribe(() => safeRender());
   host.broadcast(); // push the opening board; each view carries the seat's id
   safeRender();
-  game.run().catch(fatal);
+  runGame(game);
 }
 
 /** Player: connect to a room by code. */
@@ -853,7 +872,14 @@ function lobbyScreen() {
         ),
       ]) : null,
       isHost
-        ? el('button', { class: 'primary big', disabled: r.status !== 'open', onclick: () => startHostedGame() }, 'Start the game')
+        ? el('button', {
+          class: 'primary big',
+          disabled: r.status !== 'open' || r.starting,
+          // Once only. A second press used to build a second game on the same
+          // connection — two loops, two sets of seats, one transport — and the
+          // first one was left running and abandoned.
+          onclick: () => { if (r.starting) return; r.starting = true; startHostedGame(); },
+        }, r.starting ? 'Starting…' : 'Start the game')
         : el('div', { class: 'waiting' }, [el('span', { class: 'spinner' }), el('p', {}, 'Ready — waiting on the host.')]),
       el('button', { class: 'ghost', onclick: () => leaveSession() }, isHost ? 'Close the room' : 'Leave'),
     ]),
@@ -1311,7 +1337,10 @@ function stageView(s) {
       el('span', { class: 'spinner' }),
       el('p', {}, waiting.length
         ? `Waiting on ${waiting.map((id) => nameOf(s, id).split(' ')[0]).join(', ')}…`
-        : 'The court deliberates…'),
+        // Nobody is outstanding, so this is the engine between beats. Name the
+        // beat: if this panel is ever still here a minute later, which one it
+        // stopped on is the whole diagnosis.
+        : `The court deliberates… (round ${s.round}, ${s.phase})`),
     ]),
   ]);
 }
@@ -1871,3 +1900,28 @@ function section(title, lines) {
 }
 
 render();
+
+// A handle on the running game, for when something goes wrong at a real table.
+// `kg.why()` in the console says what the loop is waiting for — which is the
+// one question a spinner cannot answer on its own.
+if (typeof window !== 'undefined') {
+  window.kg = {
+    app,
+    state: () => app.game?.state ?? null,
+    why: () => ({
+      screen: app.screen,
+      mode: app.mode,
+      seat: app.mySeat,
+      generation: app.generation,
+      round: currentView()?.round ?? null,
+      phase: currentView()?.phase ?? null,
+      pending: app.pending ? { pid: app.pending.pid, type: app.pending.request?.type } : null,
+      paused: app.paused ? { kind: app.paused.kind, fading: !!app.paused.fading } : null,
+      animating: app.animating,
+      gate: app.gate,
+      waitingOnPeers: app.host ? app.host.waitingOn() : [],
+      peers: app.net?.peers?.() ?? null,
+      fatal: app.fatal,
+    }),
+  };
+}
