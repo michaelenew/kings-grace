@@ -672,3 +672,12 @@ button.title-slot { font: inherit; text-align: center; cursor: pointer; }
 }
 .lobby-seat.bot { opacity: .7; font-style: italic; }
 .lobby-name { color: var(--ink); }
+
+/* What broke, when the game has stopped. Small, scrollable, and selectable —
+   it exists to be read out or pasted into a bug report. */
+.fatal-detail {
+  font-size: .72rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+  max-height: 40vh; overflow: auto; padding: .7rem .8rem; margin: .6rem 0;
+  border: 1px solid var(--line); border-radius: 6px; color: var(--ink-dim);
+  background: rgba(0, 0, 0, .18); user-select: text;
+}
