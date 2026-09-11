@@ -28,6 +28,10 @@ const root = document.getElementById('app');
 // it hands off to the next phase. Long enough to read that the game moved, and
 // always click-skippable.
 const INTERLUDE_MS = 2000;
+// How often the host asks again for a decision it is still waiting on. Long
+// enough that a thinking player never sees it, short enough that a lost message
+// costs a few seconds rather than the game.
+const NUDGE_MS = 5000;
 const REVEAL_MS = 2000;
 const FADE_MS = 320;
 
@@ -56,6 +60,8 @@ const app = {
   mySeat: null, // my pid, in host/client mode
   view: null, // the client's latest board view (client mode)
   net: null, // the transport (host or client)
+  host: null, // the hosting wrapper (host mode), for who-are-we-waiting-on
+  nudgeTimer: null, // the host's re-ask timer for a decision that never came back
   room: null, // lobby state: { code, status, members:[{peerId,name,seatIndex}], error }
   online: { name: '', code: '' }, // the host/join form on the setup screen
   settings: {
@@ -201,6 +207,8 @@ function gamePause(beat) {
 }
 
 function resetSessionState() {
+  if (app.nudgeTimer) { clearInterval(app.nudgeTimer); app.nudgeTimer = null; }
+  app.host = null;
   app.pending = null;
   app.paused = null;
   app.gate = null;
@@ -276,8 +284,14 @@ function hostNewGame() {
     onMessage: (peerId, msg) => {
       if (msg?.t === 'join') {
         const name = String(msg.name || 'A house').slice(0, 20);
-        const existing = app.room.members.find((m) => m.peerId === peerId);
-        if (existing) existing.name = name;
+        // A player who refreshes comes back as a new peer id. Match them to the
+        // row they already have — by channel first, then by name — or a ghost
+        // takes a seat at the table, and the game later waits forever on a
+        // decision from a tab nobody is sitting at.
+        const live = new Set(app.net?.peers?.() || []);
+        const existing = app.room.members.find((m) => m.peerId === peerId)
+          || app.room.members.find((m) => m.name === name && !live.has(m.peerId));
+        if (existing) { existing.peerId = peerId; existing.name = name; }
         else app.room.members.push({ peerId, name });
         app.room.players = Math.max(app.room.players, Math.min(PLAYER_MAX, 1 + app.room.members.length));
         broadcastLobby(); render();
@@ -335,6 +349,11 @@ function startHostedGame() {
   resetSessionState();
   void names;
 
+  app.host = host;
+  // Nothing that goes out is guaranteed to arrive. If a decision we asked for
+  // never comes back, ask again rather than sitting on a spinner forever.
+  app.nudgeTimer = setInterval(() => host.nudge(), NUDGE_MS);
+
   game.subscribe(() => render());
   host.broadcast(); // push the opening board; each view carries the seat's id
   render();
@@ -387,10 +406,15 @@ function clientMessage(msg) {
     return;
   }
   if (msg.t === 'request') {
+    // The host re-asks for anything it has not heard back on. If this is the
+    // decision already in front of me, leave it alone — rebuilding it would
+    // throw away a half-filled order every few seconds.
+    if (app.pending && app.pending.rid === msg.rid) return;
     if (msg.pid) { app.mySeat = msg.pid; app.humanSeats = new Set([msg.pid]); }
     app.view = msg.view;
     app.pending = {
       pid: msg.pid,
+      rid: msg.rid,
       request: msg.request,
       view: msg.view,
       submit: (a) => app.net.send({ t: 'answer', pid: msg.pid, rid: msg.rid, answer: a }),
@@ -1245,10 +1269,16 @@ function stageView(s) {
     ]);
   }
   if (app.paused) return app.paused.kind === 'roundEnd' ? pausePanel(s) : interludePanel(s);
+  // Name whoever the table is actually waiting on. A spinner with no subject is
+  // the same picture whether a bot is thinking for 20ms or a player's phone has
+  // fallen off the network, and those need very different reactions.
+  const waiting = app.mode === 'host' && app.host ? app.host.waitingOn() : [];
   return el('section', { class: 'stage' }, [
     el('div', { class: 'waiting' }, [
       el('span', { class: 'spinner' }),
-      el('p', {}, 'The court deliberates…'),
+      el('p', {}, waiting.length
+        ? `Waiting on ${waiting.map((id) => nameOf(s, id).split(' ')[0]).join(', ')}…`
+        : 'The court deliberates…'),
     ]),
   ]);
 }

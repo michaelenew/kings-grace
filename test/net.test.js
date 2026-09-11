@@ -286,3 +286,55 @@ test('a peer is sent a window of the chronicle, not the whole history', async ()
   const late = Math.max(...seen.filter((v) => v.round >= state.round - 1).map(size));
   assert.ok(late < FRAME_LIMIT, `a late view still fits one frame (was ${late} bytes)`);
 });
+
+// ------------------------------------------------------------ a lost decision
+
+// Nothing that goes over a channel is guaranteed to arrive, and the failures
+// are quiet: a channel that dies without firing close, a frame the browser
+// drops, a phone that sleeps through it. The engine would then wait on an
+// answer that can never come — the whole table frozen on a spinner. So the host
+// asks again for anything outstanding, and the peer ignores a re-ask for a
+// decision it is already showing.
+test('a request that never arrives is asked again, and the game moves on', async () => {
+  const state = createGame({ seed: 7, seats: Array.from({ length: 3 }, () => ({ kind: 'human' })) });
+  const bus = makeBus();
+
+  let swallowNext = true; // the first thing p1 is sent simply never lands
+  const link = bus.clientTransport('p1');
+  const lossy = {
+    send: link.send,
+    onMessage: (fn) => link.onMessage((from, msg) => {
+      if (msg.t === 'request' && swallowNext) { swallowNext = false; return; }
+      fn(from, msg);
+    }),
+  };
+
+  const seats = [
+    { pid: 'p0', kind: 'local', controller: { kind: 'human', decide: (req) => autoAnswer(state, 'p0', req) } },
+    { pid: 'p1', kind: 'remote', peerId: 'p1' },
+    { pid: 'p2', kind: 'remote', peerId: 'p2' },
+  ];
+  const game = new Game({ state, controllers: {} });
+  const host = createHost({ game, transport: bus.hostTransport, seats });
+  game.controllers = host.controllers;
+
+  const c1 = scriptedClient('p1', lossy);
+  const c2 = scriptedClient('p2', bus.clientTransport('p2'));
+
+  // Without the re-ask this never settles: p1 was asked once, and that message
+  // is gone. The nudge stands in for the app's timer.
+  const nudger = setInterval(() => host.nudge(), 1);
+  try {
+    await Promise.race([
+      game.run(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('the host is still waiting on a peer')), 10000)),
+    ]);
+  } finally {
+    clearInterval(nudger);
+  }
+
+  assert.equal(swallowNext, false, 'a request really was dropped');
+  assert.equal(state.phase, 'gameOver', 'and the game still reached its end');
+  assert.deepEqual(host.waitingOn(), [], 'nothing is left outstanding');
+  void c1; void c2;
+});

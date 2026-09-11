@@ -66,7 +66,7 @@ const ACTIONS = {
  * @param {object} opts.transport  {send(peerId,msg), onMessage(fn)}
  * @param {Array} opts.seats  [{pid, kind:'local'|'remote'|'bot', peerId?, controller?}]
  *   local/bot seats supply their own controller; remote seats are driven here.
- * @returns {{controllers: object, broadcast: () => void}}
+ * @returns {{controllers: object, broadcast: () => void, waitingOn: () => string[], nudge: () => void}}
  */
 export function createHost({ game, transport, seats }) {
   const controllers = {};
@@ -114,6 +114,24 @@ export function createHost({ game, transport, seats }) {
   /** Push every remote seat its current redacted view. Fired on any state change. */
   function broadcast() {
     for (const seat of seats) if (seat.kind === 'remote') viewTo(seat);
+  }
+
+  /** The seats we are still waiting on a decision from. */
+  function waitingOn() {
+    return Object.entries(remotes).filter(([, rec]) => rec.pending).map(([pid]) => pid);
+  }
+
+  /**
+   * Re-send every decision still outstanding. A message can go missing for
+   * reasons we never hear about — a channel that died without firing close, a
+   * frame the browser dropped, a phone that slept through it — and the engine
+   * would then wait on an answer that can never come, which is a game frozen
+   * for everybody. So the host asks again, on a timer. A peer ignores a nudge
+   * for a decision it is already showing, so when nothing is wrong this costs
+   * nothing and changes nothing.
+   */
+  function nudge() {
+    for (const seat of seats) if (seat.kind === 'remote') resendPending(seat);
   }
 
   transport.onMessage(async (from, msg) => {
@@ -170,5 +188,5 @@ export function createHost({ game, transport, seats }) {
 
   game.subscribe(() => broadcast());
 
-  return { controllers, broadcast };
+  return { controllers, broadcast, waitingOn, nudge };
 }
