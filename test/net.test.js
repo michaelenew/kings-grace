@@ -234,3 +234,55 @@ test('a whole game plays out when the board is bigger than one frame', async () 
   assert.ok(bus.sent.every((n) => n < FRAME_LIMIT), 'nothing was ever offered to the channel oversized');
   void winner;
 });
+
+// ------------------------------------------------------- the chronicle window
+
+// A view is mostly its chronicle, and the chronicle only grows. The host keeps
+// the whole thing; a peer is sent a window of it — this round and the two
+// before — so an update stays the same size in round twelve as in round two.
+// See WIRE_ROUNDS in src/net/host.js.
+const WIRE_ROUNDS = 3;
+
+test('a peer is sent a window of the chronicle, not the whole history', async () => {
+  const state = createGame({ seed: 31, seats: Array.from({ length: 4 }, () => ({ kind: 'human' })) });
+  const bus = makeBus();
+  const seats = [
+    { pid: 'p0', kind: 'local', controller: { kind: 'human', decide: (req) => autoAnswer(state, 'p0', req) } },
+    { pid: 'p1', kind: 'remote', peerId: 'p1' },
+    { pid: 'p2', kind: 'remote', peerId: 'p2' },
+    { pid: 'p3', kind: 'bot', controller: createAI('balanced', 'opportunist', saltFor(state.seed, 3)) },
+  ];
+  const game = new Game({ state, controllers: {} });
+  const host = createHost({ game, transport: bus.hostTransport, seats });
+  game.controllers = host.controllers;
+
+  const c1 = scriptedClient('p1', bus.clientTransport('p1'));
+  const c2 = scriptedClient('p2', bus.clientTransport('p2'));
+  await game.run();
+
+  assert.ok(state.round > WIRE_ROUNDS, 'the game ran long enough for there to be history to cut');
+  const seen = [...c1.seen, ...c2.seen];
+
+  for (const view of seen) {
+    for (const entry of view.log) {
+      assert.ok(entry.round >= view.round - (WIRE_ROUNDS - 1), 'nothing older than the window is sent');
+    }
+  }
+
+  // The current round always arrives whole — the round recap is drawn from it.
+  const finals = seen.filter((v) => v.round === state.round);
+  const hostHas = state.log.filter((l) => l.round === state.round && (!l.secret || l.pid === 'p1')).length;
+  const peerHas = finals[finals.length - 1].log.filter((l) => l.round === state.round).length;
+  assert.equal(peerHas, hostHas, 'this round reaches the peer in full');
+
+  // And the cut is visible rather than silent.
+  assert.ok(
+    seen.some((v) => v.log[0] && v.log[0].text.startsWith('Earlier rounds')),
+    'a trimmed chronicle says so',
+  );
+
+  // The point of all of it: a board update stops growing with the game.
+  const size = (v) => Buffer.byteLength(JSON.stringify(v), 'utf8');
+  const late = Math.max(...seen.filter((v) => v.round >= state.round - 1).map(size));
+  assert.ok(late < FRAME_LIMIT, `a late view still fits one frame (was ${late} bytes)`);
+});
