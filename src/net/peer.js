@@ -18,6 +18,17 @@
 
 import { sendChunked, receiveChunked } from './chunk.js';
 
+// Add ?debug to the page's URL and every frame in and out is logged, with its
+// direction, kind and size. When a table freezes, the one thing worth knowing
+// is whether the message arrived at all, and nothing else can tell you that:
+// data channel traffic never appears in the browser's network panel.
+const DEBUG = typeof location !== 'undefined' && /[?&]debug(=|&|$)/.test(location.search);
+function trace(direction, who, msg) {
+  if (!DEBUG) return;
+  const kind = msg?.t || (msg?.__chunk ? `chunk ${msg.__chunk.i + 1}/${msg.__chunk.n}` : typeof msg);
+  console.log(`[wire] ${direction} ${who || ''} ${kind} ${JSON.stringify(msg)?.length ?? 0}b`);
+}
+
 const ROOM_PREFIX = 'kingsgraces-';
 const PEER_OPTS = {}; // default free broker + Google STUN; swap for a self-host here
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alikes
@@ -58,7 +69,7 @@ export function hostRoom(code, handlers = {}) {
   peer.on('connection', (conn) => {
     // One reassembler per channel, calling whatever the current handler is —
     // createHost swaps it in when the game starts.
-    const receive = receiveChunked((msg) => messageHandler(conn.peer, msg));
+    const receive = receiveChunked((msg) => { trace('in  <-', conn.peer, msg); messageHandler(conn.peer, msg); });
     conn.on('open', () => {
       conns.set(conn.peer, conn);
       handlers.onJoin && handlers.onJoin(conn.peer);
@@ -72,8 +83,15 @@ export function hostRoom(code, handlers = {}) {
   });
 
   return {
-    send: (peerId, msg) => { const c = conns.get(peerId); if (c && c.open) sendChunked((m) => c.send(m), msg); },
-    broadcast: (msg) => { for (const c of conns.values()) if (c.open) sendChunked((m) => c.send(m), msg); },
+    send: (peerId, msg) => {
+      const c = conns.get(peerId);
+      // Worth saying out loud: a send to a channel that is gone is how a table
+      // ends up waiting on an answer nobody was ever asked for.
+      if (!c || !c.open) { trace('DROPPED ->', peerId, msg); return; }
+      trace('out ->', peerId, msg);
+      sendChunked((m) => c.send(m), msg);
+    },
+    broadcast: (msg) => { for (const c of conns.values()) if (c.open) { trace('out ->', c.peer, msg); sendChunked((m) => c.send(m), msg); } },
     onMessage: (fn) => { messageHandler = fn; },
     peers: () => [...conns.keys()],
     close: () => { for (const c of conns.values()) c.close(); peer.destroy(); },
@@ -98,7 +116,7 @@ export function joinRoom(code, handlers = {}) {
     // plain objects, some large (a board view), and binary pack has been flaky
     // with big nested objects. The initiator's choice governs both directions.
     conn = peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' });
-    const receive = receiveChunked((msg) => messageHandler(msg));
+    const receive = receiveChunked((msg) => { trace('in  <-', 'host', msg); messageHandler(msg); });
     conn.on('open', () => handlers.onReady && handlers.onReady(myId));
     conn.on('data', (data) => receive(data));
     conn.on('close', () => handlers.onClose && handlers.onClose());
@@ -107,7 +125,11 @@ export function joinRoom(code, handlers = {}) {
   peer.on('error', (err) => handlers.onError && handlers.onError(err));
 
   return {
-    send: (msg) => { if (conn && conn.open) sendChunked((m) => conn.send(m), msg); },
+    send: (msg) => {
+      if (!conn || !conn.open) { trace('DROPPED ->', 'host', msg); return; }
+      trace('out ->', 'host', msg);
+      sendChunked((m) => conn.send(m), msg);
+    },
     onMessage: (fn) => { messageHandler = fn; },
     close: () => { if (conn) conn.close(); peer.destroy(); },
   };
