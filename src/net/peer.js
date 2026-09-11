@@ -10,6 +10,13 @@
 // Signalling goes through PeerJS's free public broker (only the handshake — no
 // game data ever touches it). If that broker is ever flaky, the fix is to point
 // `PEER_OPTS` at a self-hosted PeerServer; nothing else changes.
+//
+// Everything that goes over a channel goes through sendChunked/receiveChunked,
+// because PeerJS's JSON channel silently discards any message of 16300 bytes or
+// more — and a board view grows with the chronicle, so a long game will reach
+// that. See src/net/chunk.js.
+
+import { sendChunked, receiveChunked } from './chunk.js';
 
 const ROOM_PREFIX = 'kingsgraces-';
 const PEER_OPTS = {}; // default free broker + Google STUN; swap for a self-host here
@@ -49,18 +56,24 @@ export function hostRoom(code, handlers = {}) {
   peer.on('open', () => handlers.onReady && handlers.onReady(code));
   peer.on('error', (err) => handlers.onError && handlers.onError(err));
   peer.on('connection', (conn) => {
+    // One reassembler per channel, calling whatever the current handler is —
+    // createHost swaps it in when the game starts.
+    const receive = receiveChunked((msg) => messageHandler(conn.peer, msg));
     conn.on('open', () => {
       conns.set(conn.peer, conn);
       handlers.onJoin && handlers.onJoin(conn.peer);
     });
-    conn.on('data', (data) => messageHandler(conn.peer, data));
+    conn.on('data', (data) => receive(data));
     conn.on('close', () => { conns.delete(conn.peer); handlers.onLeave && handlers.onLeave(conn.peer); });
-    conn.on('error', () => { /* a dropped channel surfaces as close */ });
+    // A dropped channel surfaces as close; anything else is worth a line in the
+    // console, because a channel error that nobody ever sees is how a game ends
+    // up waiting forever for a message that was never delivered.
+    conn.on('error', (err) => console.warn('The King’s Graces: data channel error', err));
   });
 
   return {
-    send: (peerId, msg) => { const c = conns.get(peerId); if (c && c.open) c.send(msg); },
-    broadcast: (msg) => { for (const c of conns.values()) if (c.open) c.send(msg); },
+    send: (peerId, msg) => { const c = conns.get(peerId); if (c && c.open) sendChunked((m) => c.send(m), msg); },
+    broadcast: (msg) => { for (const c of conns.values()) if (c.open) sendChunked((m) => c.send(m), msg); },
     onMessage: (fn) => { messageHandler = fn; },
     peers: () => [...conns.keys()],
     close: () => { for (const c of conns.values()) c.close(); peer.destroy(); },
@@ -85,15 +98,16 @@ export function joinRoom(code, handlers = {}) {
     // plain objects, some large (a board view), and binary pack has been flaky
     // with big nested objects. The initiator's choice governs both directions.
     conn = peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' });
+    const receive = receiveChunked((msg) => messageHandler(msg));
     conn.on('open', () => handlers.onReady && handlers.onReady(myId));
-    conn.on('data', (data) => messageHandler(data));
+    conn.on('data', (data) => receive(data));
     conn.on('close', () => handlers.onClose && handlers.onClose());
     conn.on('error', (err) => handlers.onError && handlers.onError(err));
   });
   peer.on('error', (err) => handlers.onError && handlers.onError(err));
 
   return {
-    send: (msg) => { if (conn && conn.open) conn.send(msg); },
+    send: (msg) => { if (conn && conn.open) sendChunked((m) => conn.send(m), msg); },
     onMessage: (fn) => { messageHandler = fn; },
     close: () => { if (conn) conn.close(); peer.destroy(); },
   };

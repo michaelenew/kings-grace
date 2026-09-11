@@ -6,7 +6,8 @@
 // redacted per-seat view with `viewFor` — so a remote seat is just a controller
 // whose `decide` ships the request (and only that seat's view) to that peer and
 // waits for the answer to come back. Secrets never leave the host: a peer only
-// ever receives `viewFor(state, theirSeat)`, the same thing a bot would see.
+// ever receives `viewFor(state, theirSeat)`, the same thing a bot would see —
+// and with the old chronicle trimmed off it, see `forTheWire` below.
 //
 // The transport is deliberately tiny so this is testable without any real
 // network — see test/net.test.js, which plays a whole game over an in-memory
@@ -22,6 +23,30 @@
 //                  {t:'action', pid, method, args}   a free action (a deal, a word)
 
 import { viewFor } from '../engine/state.js';
+
+// How much of the chronicle a peer is sent: this round and the two before it.
+//
+// A view is mostly its log — by round ten at a full table the chronicle is some
+// 85% of the payload, and the whole thing had grown past 26KB. That is the
+// host's memory, not the player's: the chronicle panel scrolls to the bottom on
+// every update, and the only thing that reads further back is a player scrolling
+// for themselves. So the wire carries a window instead of the whole history, and
+// every update stays inside one channel frame at any table size.
+const WIRE_ROUNDS = 3;
+
+/**
+ * The same view, with the old chronicle cut off. A line is left in its place so
+ * a player who scrolls up can see that the history is trimmed rather than
+ * believing the game began three rounds ago.
+ */
+function forTheWire(view) {
+  const log = view.log || [];
+  const from = view.round - (WIRE_ROUNDS - 1);
+  const kept = log.filter((entry) => entry.round >= from);
+  if (kept.length === log.length) return view;
+  const note = { round: kept[0]?.round ?? view.round, kind: 'setup', text: 'Earlier rounds are kept on the host\u2019s screen.' };
+  return { ...view, log: [note, ...kept] };
+}
 
 // The free actions a seat may take outside the decision flow (while the deal
 // table is open). Each maps to a method already on the Game. Listed explicitly
@@ -57,9 +82,10 @@ export function createHost({ game, transport, seats }) {
       // from a person, over the wire.
       controllers[seat.pid] = {
         kind: 'human',
-        decide(request, view) {
+        decide(request, engineView) {
           return new Promise((resolve) => {
             const myRid = ++rid;
+            const view = forTheWire(engineView);
             rec.pending = { rid: myRid, resolve, request, view };
             transport.send(rec.peerId, { t: 'request', pid: seat.pid, rid: myRid, request, view });
           });
@@ -75,7 +101,7 @@ export function createHost({ game, transport, seats }) {
   // Every view carries `you` — the seat it is for — so a client learns its seat
   // from any board update, not from one fragile hand-off message.
   function viewTo(seat) {
-    transport.send(seat.peerId, { t: 'view', you: seat.pid, view: viewFor(game.state, seat.pid) });
+    transport.send(seat.peerId, { t: 'view', you: seat.pid, view: forTheWire(viewFor(game.state, seat.pid)) });
   }
 
   function resendPending(seat) {
