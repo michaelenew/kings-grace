@@ -176,7 +176,12 @@ function gamePause(beat) {
     // player moves on. Always manual — the moment to take stock.
     if (kind === 'roundEnd') {
       (async () => {
-        if (app.settings.animate) await showResolution();
+        // The recap has to appear whatever the playback does. If an animation
+        // ever throws, swallowing it here would leave this promise unresolved
+        // and the whole game stopped dead on a spinner.
+        if (app.settings.animate) {
+          try { await showResolution(); } catch { app.animating = false; }
+        }
         app.paused = { kind, resolve }; render();
       })();
       return;
