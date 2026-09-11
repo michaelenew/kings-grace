@@ -94,7 +94,18 @@ export class Game {
   }
 
   notify() {
-    for (const fn of this.listeners) fn(this.state);
+    // A listener is a screen or a transport, and neither is the game. If one of
+    // them throws, that is a bug where it lives — not a reason for the round to
+    // stop dead, which is what happened while this ran unguarded: the throw
+    // came back out through emit() and killed the run loop, leaving every
+    // player at the table watching a spinner with nothing to say why.
+    for (const fn of this.listeners) {
+      try {
+        fn(this.state);
+      } catch (err) {
+        if (typeof console !== 'undefined') console.error('The King’s Graces: a listener threw', err);
+      }
+    }
   }
 
   emit(kind, text, data = {}) {

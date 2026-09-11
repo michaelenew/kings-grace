@@ -74,7 +74,30 @@ const app = {
     seats: Array.from({ length: PLAYER_MAX }, (_, i) => ({ kind: i === 0 ? 'human' : 'ai' })),
   },
   advancedOpen: false,
+  fatal: null, // the game stopped on an error — {text, stack}
 };
+
+/**
+ * The game stopped on an error. Say so, with what broke, instead of leaving a
+ * spinner turning forever: a frozen table with no explanation is the worst
+ * thing this can do to a room full of people. Drawn straight onto the root,
+ * bypassing the normal render, because the normal render may be the thing that
+ * threw.
+ */
+function fatal(err) {
+  console.error('The King’s Graces: the game stopped', err);
+  app.fatal = { text: String(err?.message || err), stack: String(err?.stack || '') };
+  try {
+    mount(root, el('div', { class: 'setup' }, [
+      el('div', { class: 'setup-card' }, [
+        el('h1', { class: 'title' }, 'The game has stopped'),
+        el('p', { class: 'warn' }, 'Something went wrong and the round cannot go on. This is a bug — what it says below is the useful part of it.'),
+        el('pre', { class: 'fatal-detail' }, `${app.fatal.text}\n\n${app.fatal.stack}`),
+        el('button', { class: 'ghost', onclick: () => leaveSession() }, 'Back to the start'),
+      ]),
+    ]));
+  } catch { /* if even this cannot draw, the console has it */ }
+}
 
 /** The knobs worth putting in front of a playtester, in the order they matter. */
 const KNOBS = [
@@ -207,6 +230,7 @@ function gamePause(beat) {
 }
 
 function resetSessionState() {
+  app.fatal = null;
   if (app.nudgeTimer) { clearInterval(app.nudgeTimer); app.nudgeTimer = null; }
   app.host = null;
   app.pending = null;
@@ -246,9 +270,18 @@ function startGame() {
   const game = new Game({ state, controllers, pause: gamePause });
   app.game = game;
   resetSessionState();
-  game.subscribe(() => render());
+  game.subscribe(() => safeRender());
   render();
-  game.run();
+  game.run().catch(fatal);
+}
+
+/**
+ * Redraw, and if the redraw is what is broken, say so. The engine no longer
+ * dies on a listener that throws, so without this a render bug would show as a
+ * board that quietly stopped updating.
+ */
+function safeRender() {
+  try { render(); } catch (err) { fatal(err); }
 }
 
 /** The rules, plus whatever the player has overridden on the setup screen. */
@@ -354,10 +387,10 @@ function startHostedGame() {
   // never comes back, ask again rather than sitting on a spinner forever.
   app.nudgeTimer = setInterval(() => host.nudge(), NUDGE_MS);
 
-  game.subscribe(() => render());
+  game.subscribe(() => safeRender());
   host.broadcast(); // push the opening board; each view carries the seat's id
-  render();
-  game.run();
+  safeRender();
+  game.run().catch(fatal);
 }
 
 /** Player: connect to a room by code. */
